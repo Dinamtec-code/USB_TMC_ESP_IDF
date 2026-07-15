@@ -1,0 +1,5 @@
+"-specs=E:/Users/damian/Proyectos/esp-idf-pruebas/usb_tmc_app/build/bootloader/specs/picolibc.specs"
+-mlongcalls
+-fno-builtin-memcpy
+-fno-builtin-memset
+-fno-builtin-bzero

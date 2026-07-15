@@ -90,48 +90,11 @@ extern "C"
   // 3. STRING DESCRIPTORS (Los nombres que verá Windows y NI-VISA)
   // ============================================================================
   static char const *string_desc_arr[] = {
-      (const char[]){0x09, 0x04}, // 0: Idioma (0x0409 = Inglés US)
-      "Damian Electronica",       // 1: Fabricante (Aparece en el Device Manager)
-      "Calefactor controlado",    // 2: Producto
-      "FP-S3-2026-001",           // 3: Número de Serie (Crítico para SCPI *IDN? y VISA)
+      "\x09\x04",              // 0: Idioma (0x0409 = Inglés US)
+      "Damian Electronica",    // 1: Fabricante
+      "Calefactor controlado", // 2: Producto
+      "FP-S3-2026-001",        // 3: Número de Serie
       NULL};
-
-  // static uint16_t _desc_str[32];
-
-  /*   // Callback requerido por TinyUSB para codificar strings en formato UTF-16
-    uint16_t const *tud_descriptor_string_cb(uint8_t index, uint16_t langid)
-    {
-      (void)langid;
-      uint8_t chr_count;
-      if (index == 0)
-      {
-        memcpy(&_desc_str[1], string_desc_arr[0], 2);
-        chr_count = 1;
-      }
-      else
-      {
-        // Si index está fuera de rango, devolver string vacío en lugar de NULL
-        if (index >= sizeof(string_desc_arr) / sizeof(string_desc_arr[0]))
-        {
-          const char *empty = "";
-          chr_count = 0;
-          memcpy(&_desc_str[1], empty, 0);
-        }
-        else
-        {
-          const char *str = string_desc_arr[index];
-          chr_count = strlen(str);
-          if (chr_count > 31)
-            chr_count = 31;
-          for (uint8_t i = 0; i < chr_count; i++)
-          {
-            _desc_str[1 + i] = str[i];
-          }
-        }
-      }
-      _desc_str[0] = (TUSB_DESC_STRING << 8) | (2 * chr_count + 2);
-      return _desc_str;
-    } */
 
   tusb_desc_device_t const *usb_desc_get_dev()
   {
