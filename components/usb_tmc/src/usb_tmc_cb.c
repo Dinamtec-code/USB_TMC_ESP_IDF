@@ -52,7 +52,7 @@ bool tud_usbtmc_msg_data_cb(void *data, size_t len, bool transfer_complete)
     ESP_LOGI(TAG_TMC, " Datos ");
     if (transfer_complete)
     {
-        if (strncmp("*idn?", data, 4) || strncmp("*IDN?", data, 4))
+        if (!strncmp((char *)data, "*idn?", 5) || !strncmp((char *)data ,"*IDN?", 5))
         {
             qidn = true;
         }
