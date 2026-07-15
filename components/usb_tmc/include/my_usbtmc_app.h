@@ -12,10 +12,12 @@ extern "C"
     void tmc_hal_init(void);
     void usbtmc_app_task(void *pvParameters);
 
-    tusb_desc_device_t const *usb_desc_get_dev();
-    uint8_t const *usb_desc_get_cfg();
-    char const **usb_desc_get_string_desc();
-    int usb_desc_get_string_desc_count();
+    tusb_desc_device_t const *usb_desc_get_dev(void);
+    uint8_t const *usb_desc_get_cfg(void);
+    char const **usb_desc_get_string_desc(void);
+    int usb_desc_get_string_desc_count(void);
+    uint8_t const *get_desc_ms_os_20_features(void);
+    size_t get_desc_ms_os_20_f_count(void);
 
 #ifdef __cplusplus
 }

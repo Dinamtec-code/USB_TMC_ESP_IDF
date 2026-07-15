@@ -15,6 +15,8 @@ extern "C"
 
 #define CFG_TUSB_DEBUG 3 // 0=nada, 1=error, 2=info, 3=verbose
 
+#define CFG_TUD_BOS 1
+
 //--------------------------------------------------------------------+
 // Board Specific Configuration
 //--------------------------------------------------------------------+

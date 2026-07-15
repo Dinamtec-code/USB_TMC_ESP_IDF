@@ -10,14 +10,6 @@
 extern "C"
 {
 #endif
-    void tud_usbtmc_bulkOut_clearFeature_cb(void);
-    void tud_usbtmc_bulkIn_clearFeature_cb(void);
-    bool tud_usbtmc_initiate_abort_bulk_out_cb(uint8_t *tmcResult);
-    bool tud_usbtmc_check_abort_bulk_out_cb(usbtmc_check_abort_bulk_rsp_t *rsp);
-    bool tud_usbtmc_initiate_abort_bulk_in_cb(uint8_t *tmcResult);
-    bool tud_usbtmc_check_abort_bulk_in_cb(usbtmc_check_abort_bulk_rsp_t *rsp);
-    bool tud_usbtmc_initiate_clear_cb(uint8_t *tmcResult);
-    bool tud_usbtmc_check_clear_cb(usbtmc_get_clear_status_rsp_t *rsp);
     usbtmc_response_capabilities_488_t const *tud_usbtmc_get_capabilities_cb(void);
     void tud_usbtmc_open_cb(uint8_t interface_id);
     bool tud_usbtmc_msgBulkOut_start_cb(usbtmc_msg_request_dev_dep_out const *msgHeader);
@@ -26,8 +18,16 @@ extern "C"
     bool tud_usbtmc_msgBulkIn_complete_cb(void);
     uint8_t tud_usbtmc_get_stb_cb(uint8_t *tmcResult);
     bool tud_usbtmc_msg_trigger_cb(usbtmc_msg_generic_t *msg);
+    void tud_usbtmc_bulkOut_clearFeature_cb(void);
+    void tud_usbtmc_bulkIn_clearFeature_cb(void);
+    bool tud_usbtmc_initiate_abort_bulk_out_cb(uint8_t *tmcResult);
+    bool tud_usbtmc_check_abort_bulk_out_cb(usbtmc_check_abort_bulk_rsp_t *rsp);
+    bool tud_usbtmc_initiate_abort_bulk_in_cb(uint8_t *tmcResult);
+    bool tud_usbtmc_check_abort_bulk_in_cb(usbtmc_check_abort_bulk_rsp_t *rsp);
+    bool tud_usbtmc_initiate_clear_cb(uint8_t *tmcResult);
+    bool tud_usbtmc_check_clear_cb(usbtmc_get_clear_status_rsp_t *rsp);
 
 #ifdef __cplusplus
 }
 #endif
-#endif /*  USB_TMC_CB_ */
+#endif /* USB_TMC_CB_ */

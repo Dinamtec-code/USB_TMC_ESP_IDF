@@ -36,7 +36,7 @@ void usb_tmc_fsm_process(usb_tmc_event_t event, void *data, size_t len)
         if (event == EV_RX_START)
         {
             // Acción: Limpiar stream buffer preparándose para el mensaje
-            xStreamBufferReset(rx_stream);
+            //            xStreamBufferReset(rx_stream);
             current_state = STATE_RECEIVING;
         }
         else if (event == EV_TX_REQ)
@@ -57,18 +57,18 @@ void usb_tmc_fsm_process(usb_tmc_event_t event, void *data, size_t len)
         if (event == EV_RX_CHUNK)
         {
             // Acción: Guardar fragmento sin bloquear
-            xStreamBufferSend(rx_stream, data, len, 0);
+            //            xStreamBufferSend(rx_stream, data, len, 0);
         }
         else if (event == EV_RX_END)
         {
             // Acción: Guardar último fragmento y despertar a la tarea SCPI
             if (len > 0)
-                xStreamBufferSend(rx_stream, data, len, 0);
-            xTaskNotifyGive(scpi_task_handle);
-            // Si hubo un error SCPI (ej. Query Interrupted o simplemente un error previo),
-            // aquí se puede setear el ESB bit.
-            // usb_tmc_status_reg |= STB_ESB_BIT;
-            current_state = STATE_IDLE; // Vuelve a IDLE a esperar que SCPI procese
+                //                xStreamBufferSend(rx_stream, data, len, 0);
+                //            xTaskNotifyGive(scpi_task_handle);
+                // Si hubo un error SCPI (ej. Query Interrupted o simplemente un error previo),
+                // aquí se puede setear el ESB bit.
+                // usb_tmc_status_reg |= STB_ESB_BIT;
+                current_state = STATE_IDLE; // Vuelve a IDLE a esperar que SCPI procese
         }
         else if (event == EV_SCPI_REPLY)
         {
@@ -84,7 +84,7 @@ void usb_tmc_fsm_process(usb_tmc_event_t event, void *data, size_t len)
             // SCPI_ErrorPush(&scpi_context, SCPI_ERROR_QUERY_INTERRUPTED);
 
             tx_length = 0; // Descartamos la respuesta no leída
-            xStreamBufferReset(rx_stream);
+                           //            xStreamBufferReset(rx_stream);
             current_state = STATE_RECEIVING;
         }
         else if (event == EV_TX_REQ)

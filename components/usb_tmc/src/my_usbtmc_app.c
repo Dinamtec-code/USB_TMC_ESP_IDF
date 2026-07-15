@@ -62,17 +62,25 @@ void tmc_hal_init(void)
   ESP_ERROR_CHECK(err);
 }
 
-/* // Invoked when device is mounted
-void tud_mount_cb(void)
+bool tud_vendor_control_xfer_cb(uint8_t rhport, uint8_t stage, tusb_control_request_t const *request)
 {
-  ESP_LOGI(TAG_USB, "USB Montado!");
-} */
+  // Nada que hacer en la etapa DATA o ACK
+  if (stage != CONTROL_STAGE_SETUP)
+    return true;
 
-/* // Invoked when device is unmounted
-void tud_umount_cb(void)
-{
-  ESP_LOGI(TAG_USB, "USB DESmontado!");
-} */
+  // Si es la petición que definimos para MS OS 2.0 (Vendor Code = 0x01)
+  if (request->bmRequestType_bit.type == TUSB_REQ_TYPE_VENDOR && request->bRequest == 0x01)
+  {
+    if (request->wIndex == 7)
+    {
+      // El host pide el Descriptor de Features
+      return tud_control_xfer(rhport, request, (void *)get_desc_ms_os_20_features(), get_desc_ms_os_20_f_count());
+    }
+  }
+
+  // Si es otra cosa, lo rechazamos (Stall)
+  return false;
+}
 
 // Invoked when usb bus is suspended
 // remote_wakeup_en : if host allow us  to perform remote wakeup
