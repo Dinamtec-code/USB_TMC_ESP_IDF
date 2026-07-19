@@ -9,7 +9,7 @@
 
 #include "scpi/scpi.h"
 #include "scpi_engine_task.h"
-#include "usb_tmc_fsm_process.h"
+#include "usb_tmc_process.h"
 
 StreamBufferHandle_t rx_stream_handle;
 
@@ -28,7 +28,6 @@ size_t SCPI_Write(void *context, const char *data, size_t len)
     return len;
 }
 
-// La tarea de usuario de FreeRTOS
 void scpi_engine_task(void *pvParameters)
 {
     // Creamos el StreamBuffer (ej. 1024 bytes)

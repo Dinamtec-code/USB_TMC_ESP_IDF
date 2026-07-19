@@ -1,5 +1,5 @@
-#include "my_tusb_config.h"
-#include "my_usbtmc_app.h"
+#include "usb_tmc_config.h"
+#include "usb_tmc_init.h"
 
 #include "device/usbd.h"
 #include "class/usbtmc/usbtmc.h"
@@ -10,7 +10,7 @@
 // ============================================================================
 // CONFIGURACIÓN DE IDENTIFICADORES (Modificable según tu hardware/empresa)
 // ============================================================================
-#define USB_VID 0x03EB // Ejemplo (Atmel/Microchip o tu propio VID)
+#define USB_VID 0x16C0 // V-USB/libus;  // 0x03EB // Ejemplo (Atmel/Microchip o tu propio VID)
 #define USB_PID 0x2044 // PID asignado a instrumentación TMC
 #define USB_BCD 0x0100 // Versión del firmware 1.00
 

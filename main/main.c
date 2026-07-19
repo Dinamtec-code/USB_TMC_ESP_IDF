@@ -6,7 +6,7 @@
 #include "nvs_flash.h"
 #include "esp_task_wdt.h"
 
-#include "my_usbtmc_app.h"
+#include "usb_tmc_init.h"
 #include "usb_tmc_cb.h"
 
 static const char *TAG = "APP_MAIN";

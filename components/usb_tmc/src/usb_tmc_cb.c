@@ -6,7 +6,7 @@
 #include <stdint.h>
 #include "esp_log.h"
 
-#include "usb_tmc_fsm_process.h"
+#include "usb_tmc_process.h"
 
 static const char *TAG_TMC = "usb_tmc_cb";
 static volatile uint8_t status;
@@ -42,20 +42,20 @@ void tud_usbtmc_open_cb(uint8_t interface_id)
 bool tud_usbtmc_msgBulkOut_start_cb(usbtmc_msg_request_dev_dep_out const *msgHeader)
 {
     ESP_LOGI(TAG_TMC, "Mensaje bulk out start");
+
+    uint32_t transfer_size = msgHeader->TransferSize;
+    ESP_LOGI(TAG_TMC, "transferSize: %d", transfer_size);
     usb_tmc_fsm_process(EV_RX_START, NULL, 0);
     return true;
 }
-bool qidn = false;
+bool qidn1 = false;
+
 // 4. Callback de datos recibidos*
 bool tud_usbtmc_msg_data_cb(void *data, size_t len, bool transfer_complete)
 {
     ESP_LOGI(TAG_TMC, " Datos ");
     if (transfer_complete)
     {
-        if (!strncmp((char *)data, "*idn?", 5) || !strncmp((char *)data ,"*IDN?", 5))
-        {
-            qidn = true;
-        }
         usb_tmc_fsm_process(EV_RX_END, data, len);
     }
     else
@@ -69,19 +69,13 @@ bool tud_usbtmc_msg_data_cb(void *data, size_t len, bool transfer_complete)
 // 5. Callback de petición BULK IN (El host pide datos)*
 bool tud_usbtmc_msgBulkIn_request_cb(usbtmc_msg_request_dev_dep_in const *request)
 {
-
     ESP_LOGI(TAG_TMC, "Host pide datos (Bulk IN)");
+    static size_t msgReqLen;
 
-    /* TODO: Estructura temporal hasta que esté */
-    if (qidn == true)
-    {
-        const char *idn_response = "ESP32-TMC-V1.0\n";
-        size_t len = strlen(idn_response);
-        return tud_usbtmc_transmit_dev_msg_data((void *)idn_response, len, true, false);
-    }
-    /*
+    msgReqLen = (size_t)(request->TransferSize);
+
+    usb_tmc_fsm_process(EV_TX_REQ, NULL, msgReqLen);
     ESP_LOGI(TAG_TMC, "mensaje bulk request");
-    usb_tmc_fsm_process(EV_TX_REQ, NULL, 0);*/
     return true;
 }
 
