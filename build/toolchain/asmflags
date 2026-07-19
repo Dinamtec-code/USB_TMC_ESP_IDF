@@ -1,5 +1,0 @@
--mlongcalls
--fno-builtin-memcpy
--fno-builtin-memset
--fno-builtin-bzero
-"-specs=E:/Users/damian/Proyectos/esp-idf-pruebas/usb_tmc_app/build/specs/picolibc.specs"
