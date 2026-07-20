@@ -48,7 +48,7 @@ extern "C"
         EV_SCPI_DONE   // libscpi no encontró query
     } usb_tmc_event_t;
 
-    void driver_register(StreamBufferHandle_t *stream);
+    void driver_register(StreamBufferHandle_t stream);
     void usb_tmc_set_scpi_status(scpi_status_t status);
     /**
      * @brief Procesa un evento en la máquina de estados USBTMC.

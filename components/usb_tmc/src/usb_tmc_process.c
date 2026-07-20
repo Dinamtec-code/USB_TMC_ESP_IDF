@@ -19,11 +19,11 @@ const static char *TAG = "tmc_fsm_task";
 #define TX_STREAM_BUFFER_SIZE 512
 
 const size_t xTriggerLevel = 1;
-StaticStreamBuffer_t rxStreamBufferStruct;
-StaticStreamBuffer_t txStreamBufferStruct;
+static StaticStreamBuffer_t rxStreamBufferStruct;
+static StaticStreamBuffer_t txStreamBufferStruct;
 
-StreamBufferHandle_t rx_stream;
-StreamBufferHandle_t tx_stream;
+static StreamBufferHandle_t rx_stream;
+static StreamBufferHandle_t tx_stream;
 
 TaskHandle_t scpi_task_handle;
 static uint8_t rx_buff[RX_STREAM_BUFFER_SIZE + 1];
@@ -48,19 +48,6 @@ void generate_response(const char *msg, size_t len, StreamBufferHandle_t rx_stre
             //          usb_tmc_fsm_process(EV_SCPI_REPLY, NULL, 0);
         }
     }
-    /*     if (len > 0)
-        {
-            if (!strncmp((char *)msg, "*idn?", 5) || !strncmp((char *)msg, "*IDN?", 5))
-            {
-                tx_length = strlen(str_idn);
-                memcpy(tx_buffer, str_idn, strlen(str_idn));
-                usb_tmc_fsm_process(EV_SCPI_REPLY, (void *)(tx_buffer), tx_length);
-            }
-            else
-            {
-                clear_buffers();
-            }
-        } */
 }
 
 /************************************************************************
@@ -79,7 +66,7 @@ usb_tmc_status_t usb_tmc_get_stb(void)
     return usb_tmc_status_reg;
 }
 
-void driver_register(StreamBufferHandle_t *stream)
+void driver_register(StreamBufferHandle_t stream)
 {
     rx_stream = xStreamBufferCreateStatic(RX_STREAM_BUFFER_SIZE,
                                           xTriggerLevel,
@@ -91,6 +78,15 @@ void driver_register(StreamBufferHandle_t *stream)
                                           &txStreamBufferStruct);
 }
 
+void usb_tmc_set_rx_stream_buffer(StreamBufferHandle_t stream)
+{
+    rx_stream = stream;
+}
+void usb_tmc_set_tx_stream_buffer(StreamBufferHandle_t stream)
+{
+    tx_stream = stream;
+}
+
 void usb_tmc_set_scpi_status(scpi_status_t status)
 {
     current_scpi_status = status;
@@ -100,30 +96,36 @@ static void clear_buffers()
 {
     memset(tx_buffer, 0, TX_STREAM_BUFFER_SIZE);
 }
-
-void usb_tmc_fsm_process(usb_tmc_event_t event, void *data, size_t len)
+static void external_fsm_update(void)
 {
-    if (current_state == STATE_RECEIVING)
+    if (current_scpi_status & STATUS_REPLY_READY)
     {
-        if (current_scpi_status == STATUS_REPLY_READY)
+
+        if (current_state == STATE_RECEIVING)
         {
             usb_tmc_status_reg |= STB_MAV_BIT; // ¡MAV se enciende!
             current_state = STATE_REPLY_READY;
             current_scpi_status = STATUS_NONE;
         }
-        else if (current_scpi_status == STATUS_REPLY_DONE)
+    }
+    else if (current_scpi_status & STATUS_REPLY_DONE)
+    {
+        if (current_state == STATE_RECEIVING)
         {
             current_state = STATE_IDLE;
             current_scpi_status = STATUS_NONE;
         }
     }
+}
+
+void usb_tmc_fsm_process(usb_tmc_event_t event, void *data, size_t len)
+{
+    external_fsm_update();
     switch (current_state)
     {
     case STATE_IDLE:
         if (event == EV_RX_START)
         {
-            // Si se está esperando solo se inici la recepción, pero cuidado de no volver a idle si se envio un comando al parse.
-            // El parser es el que vuelve a idle.
             current_state = STATE_RECEIVING;
         }
         else if (event == EV_TX_REQ)
@@ -134,12 +136,6 @@ void usb_tmc_fsm_process(usb_tmc_event_t event, void *data, size_t len)
             // SCPI_ErrorPush(&scpi_context, SCPI_ERROR_QUERY_UNTERMINATED);
             tud_usbtmc_transmit_dev_msg_data(NULL, 0, true, false); // NAK/Empty
         }
-        /* El siguiente evento debe prodicir un error
-        else if (event == EV_SCPI_REPLY)
-        {
-            usb_tmc_status_reg |= STB_MAV_BIT; // ¡MAV se enciende!
-            current_state = STATE_REPLY_READY;
-        } */
         break;
     case STATE_RECEIVING:
         if (current_scpi_status == STATUS_NONE)
