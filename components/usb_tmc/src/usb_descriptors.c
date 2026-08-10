@@ -40,10 +40,10 @@ tusb_desc_device_t const desc_device = {
     .bLength = sizeof(tusb_desc_device_t),
     .bDescriptorType = TUSB_DESC_DEVICE,
     .bcdUSB = 0x0200,
-    .bDeviceClass = TUD_USBTMC_CLASS,
-    .bDeviceSubClass = TUD_USBTMC_SUBCLASS,
-    .bDeviceProtocol = TUD_USBTMC_PROTO_488,
-    .bMaxPacketSize0 = CFG_TUD_ENDPOINT0_SIZE,
+    .bDeviceClass = TUD_USBTMC_CLASS,           // 0x01 para descriptor de de tipo dispositivo
+    .bDeviceSubClass = TUD_USBTMC_SUBCLASS,     // 0xFE
+    .bDeviceProtocol = TUD_USBTMC_PROTO_488,    // 0x03
+    .bMaxPacketSize0 = CFG_TUD_ENDPOINT0_SIZE,  // 64 bytes para maximo tamaño de paquete de control
 
     .idVendor = USB_VID,
     .idProduct = USB_PID,

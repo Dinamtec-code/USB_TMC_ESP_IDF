@@ -9,13 +9,40 @@
 #include "usb_tmc_init.h"
 #include "usb_tmc_cb.h"
 
+#include "driver/ledc.h"
+#include "driver/gpio.h" // Necesario en v6.0 para gpio_num_t
+#include "esp_err.h"
+
 static const char *TAG = "APP_MAIN";
 
-/* // Declaramos externamente las funciones para que el compilador las vea
-extern uint8_t const *tud_descriptor_device_cb(void);
-extern uint8_t const *tud_descriptor_configuration_cb(uint8_t index);
-extern uint16_t const *tud_descriptor_string_cb(uint8_t index, uint16_t langid); */
+#define LEDC_TIMER LEDC_TIMER_0
+#define LEDC_MODE LEDC_LOW_SPEED_MODE // OBLIGATORIO en ESP32-S3
+#define LEDC_OUTPUT_IO (48)
+#define LEDC_CHANNEL LEDC_CHANNEL_0
+#define LEDC_DUTY_RES LEDC_TIMER_10_BIT 
+#define LEDC_FREQUENCY (25000)
 
+static void example_ledc_init(void)
+{
+    // 1. Configuración del temporario
+    ledc_timer_config_t ledc_timer = {
+        .speed_mode = LEDC_MODE,
+        .duty_resolution = LEDC_DUTY_RES,
+        .timer_num = LEDC_TIMER,
+        .freq_hz = LEDC_FREQUENCY,
+        .clk_cfg = LEDC_AUTO_CLK};
+    ESP_ERROR_CHECK(ledc_timer_config(&ledc_timer));
+
+    // 2. Configuración del canal
+    ledc_channel_config_t ledc_channel = {
+        .speed_mode = LEDC_MODE,
+        .channel = LEDC_CHANNEL,
+        .timer_sel = LEDC_TIMER,
+        .gpio_num = LEDC_OUTPUT_IO,
+        .duty = 0,
+        .hpoint = 0};
+    ESP_ERROR_CHECK(ledc_channel_config(&ledc_channel));
+}
 // ---------------------------------------------------------
 // Punto de entrada principal
 // ---------------------------------------------------------
@@ -37,6 +64,13 @@ void app_main(void)
     ESP_ERROR_CHECK(ret1);
 
     tmc_hal_init();
+
+    example_ledc_init();
+
+    // Ejemplo: 50% Duty Cycle (512 de 1023)
+    uint32_t duty = 256;
+    ESP_ERROR_CHECK(ledc_set_duty(LEDC_MODE, LEDC_CHANNEL, duty));
+    ESP_ERROR_CHECK(ledc_update_duty(LEDC_MODE, LEDC_CHANNEL));
 
     /*    BaseType_t ret2 = xTaskCreatePinnedToCore(usbtmc_app_task, "Task_COMM", 1024 * 8, NULL, 6, NULL, 1);
        if (ret2 != pdPASS)

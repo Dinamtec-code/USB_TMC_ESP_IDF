@@ -3,7 +3,7 @@
 idf_component_register( 
     SRCS "main.c" 
     INCLUDE_DIRS "." 
-    REQUIRES usb_tmc nvs_flash
+    REQUIRES usb_tmc nvs_flash esp_driver_ledc esp_driver_gpio
 )
 
 # Puedes dejar esto si tu componente usb_tmc requiere que no se descarten objetos,

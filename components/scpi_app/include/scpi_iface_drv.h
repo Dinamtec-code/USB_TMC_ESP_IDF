@@ -2,6 +2,7 @@
 #define SCPI_IFACE_DVR_H_
 
 #include "freertos/stream_buffer.h"
+#include "scpi_engine.h"
 
 #ifdef __cplusplus
 extern "C"
@@ -10,24 +11,39 @@ extern "C"
 
     typedef enum
     {
-        IFACE_NONE = 0x00,
-        IFACE_RX_READY = 0x01,
-        IFACE_TX_READY = 0x02,
-        IFACE_HW_READY = 0x04,
-        IFACE_DONE = 0x07, // (RX | TX | HW)
-        IFACE_ERROR = 0x80
+        SCPI_IFACE_NONE = 0x00,
+        SCPI_IFACE_RX_READY = 0x01,
+        SCPI_IFACE_TX_READY = 0x02,
+        SCPI_IFACE_HW_READY = 0x04,
+        SCPI_IFACE_ABORT_TX = 0x08,
+        SCPI_IFACE_ABORT_RX = 0x08,
+        SCPI_IFACE_ERROR = 0x80
     } iface_status_t;
 
-    // En la estructura de la interfaz (visible al consumidor pero status protegido conceptualmente)
+    typedef enum
+    {
+        /* events from SCPI engine to driver*/
+        EV_SCPI_NONE = 0x00,
+        EV_SCPI_MSG_DONE = 0x01,
+        EV_SCPI_PROCESS_DONE = 0x02,
+        /* events from driver to SCPI engine */
+        EV_SCPI_ERROR_410 = 0x04,
+        EV_SCPI_ERROR_420 = 0x08
+    } iface_event_t;
+
+    /* En la estructura de la interfaz*/
     typedef struct
     {
-        volatile iface_status_t status; // 'volatile' por si hay ISRs actualizando estado
-        iface_status_t (*get_status)(void);
+        void *context;
+        iface_status_t status;
+        /* initialized method */
         bool (*set_rx_stream)(StreamBufferHandle_t h);
         bool (*set_tx_stream)(StreamBufferHandle_t h);
-        bool (*peripheric_init)(void);
-        bool (*set_in_events_queue)(QueueHandle_t q);
-        bool (*set_out_events_queue)(QueueHandle_t q);
+        bool (*set_events_error_queue)(QueueHandle_t error_queue);
+        bool (*peripheric_init)(StreamBufferHandle_t rx_stm, StreamBufferHandle_t tx_stm, QueueHandle_t error_q);
+        /* scpi service method */
+        bool (*inform_events)(iface_event_t event);
+        iface_event_t (*get_iface_events)(void);
     } iface_struct_t;
 
     typedef iface_struct_t *iface_handle_t;

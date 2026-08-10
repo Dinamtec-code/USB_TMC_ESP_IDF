@@ -31,42 +31,70 @@ usbtmc_response_capabilities_488_t const *tud_usbtmc_get_capabilities_cb(void)
     return &tud_usbtmc_app_capabilities;
 }
 
-// 2. Callback de apertura (Requerido para inicializar el bus)*
+// 2. Callback de apertura (Requerido para inicializar el bus)
 void tud_usbtmc_open_cb(uint8_t interface_id)
 {
     ESP_LOGI(TAG_TMC, "Interface USBTMC abierta (ID: %d)", interface_id);
     tud_usbtmc_start_bus_read();
 }
 
-// 3. Callback de recepción de mensajes BULK*
+// Variable en el contexto de tu driver para recordar si este mensaje trae EOM
+static bool current_msg_has_eom = false;
+
+// 3. Callback de recepción de mensajes BULK
 bool tud_usbtmc_msgBulkOut_start_cb(usbtmc_msg_request_dev_dep_out const *msgHeader)
 {
     ESP_LOGI(TAG_TMC, "Mensaje bulk out start");
 
+    // El estándar USB-TMC define que el Bit 0 de bmTransferAttributes es el flag EOM
+    current_msg_has_eom = (msgHeader->bmTransferAttributes & 0x01) != 0;
+
     uint32_t transfer_size = msgHeader->TransferSize;
-    ESP_LOGI(TAG_TMC, "transferSize: %d", transfer_size);
-    usb_tmc_fsm_process(EV_RX_START, NULL, 0);
+    ESP_LOGI(TAG_TMC, "transferSize: %lu, EOM: %d", transfer_size, current_msg_has_eom);
+
+    // Avisamos a la FSM que empezamos a recibir datos (Bulk OUT)
+    usb_tmc_fsm_process(EV_TMC_RX_START, NULL, 0);
     return true;
 }
-bool qidn1 = false;
 
-// 4. Callback de datos recibidos*
+// 4. Callback de datos recibidos
 bool tud_usbtmc_msg_data_cb(void *data, size_t len, bool transfer_complete)
 {
-    ESP_LOGI(TAG_TMC, " Datos ");
+    ESP_LOGI(TAG_TMC, "Datos (len: %d)", len);
+
     if (transfer_complete)
     {
-        usb_tmc_fsm_process(EV_RX_END, data, len);
+        // 1. Primero metemos el último pedazo de datos tal cual vino
+        usb_tmc_fsm_process(EV_TMC_RX_CHUNK, data, len);
+
+        // 2. Revisamos si el host asertó EOM por hardware pero olvidó el '\n'
+        if (current_msg_has_eom && len > 0)
+        {
+            char last_char = ((char *)data)[len - 1];
+            // Si no termina en \n (ni \r por si acaso), lo inyectamos
+            if (last_char != '\n' && last_char != '\r')
+            {
+                char nl = '\n';
+                // Usamos el mismo evento CHUNK para inyectar este byte extra
+                usb_tmc_fsm_process(EV_TMC_RX_CHUNK, &nl, 1);
+            }
+        }
+
+        // 3. Le avisamos a la FSM que el mensaje USB terminó completamente.
+        // La FSM pasará a STATE_TMC_PROCESSING y despertará a libSCPI.
+        usb_tmc_fsm_process(EV_TMC_RX_END, NULL, 0);
     }
     else
     {
-        usb_tmc_fsm_process(EV_RX_CHUNK, data, len);
+        // Si no está completo, solo pasamos los datos
+        usb_tmc_fsm_process(EV_TMC_RX_CHUNK, data, len);
     }
+
     tud_usbtmc_start_bus_read();
     return true;
 }
 
-// 5. Callback de petición BULK IN (El host pide datos)*
+// 5. Callback de petición BULK IN (El host pide datos)
 bool tud_usbtmc_msgBulkIn_request_cb(usbtmc_msg_request_dev_dep_in const *request)
 {
     ESP_LOGI(TAG_TMC, "Host pide datos (Bulk IN)");
@@ -74,7 +102,7 @@ bool tud_usbtmc_msgBulkIn_request_cb(usbtmc_msg_request_dev_dep_in const *reques
 
     msgReqLen = (size_t)(request->TransferSize);
 
-    usb_tmc_fsm_process(EV_TX_REQ, NULL, msgReqLen);
+    usb_tmc_fsm_process(EV_TMC_TX_REQ, NULL, msgReqLen);
     ESP_LOGI(TAG_TMC, "mensaje bulk request");
     return true;
 }
@@ -83,7 +111,7 @@ bool tud_usbtmc_msgBulkIn_request_cb(usbtmc_msg_request_dev_dep_in const *reques
 bool tud_usbtmc_msgBulkIn_complete_cb(void)
 {
     ESP_LOGI(TAG_TMC, "mensaje bulk in complete");
-    usb_tmc_fsm_process(EV_TX_DONE, NULL, 0);
+    usb_tmc_fsm_process(EV_TMC_TX_DONE, NULL, 0);
     tud_usbtmc_start_bus_read();
     return true;
 }

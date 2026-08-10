@@ -1,0 +1,26 @@
+\chapter[Interfaz driver app]{Interfaz driver app}
+\label{cp:Interfaz-driver-app}
+
+\section*{Resumen}
+La interfaz del driver de la app es la que permite a la aplicación de usuario interactuar con el driver del periferico de manera abstracta, sin necesidad de conocer los detalles de la implementación del driver. Esta interfaz se define en el archivo \texttt{scpi\_iface\_drv.h} del componente scpi\_app
+
+\section{Comunicación}
+\subsection{Streams}
+Para conectar los perifericos con la aplicacion se usarán \texttt{StreamBufferHandle\_t} de datos uno de entrada y uno de salida, ambos estaticos y el dueño será la tarea \texttt{scpi\_engine(*pParam)} encargada de conectar el driver con libSCPI atravez del la interfaz. Estos stream seran inyectados en el driver en la inicialización.
+
+\subsection{Error Queue}
+Otro elemento necesario para la comunicación es la es la forma que tiene el driver para informar errores a la app quien es la encargada de registrarlos. Para esto se usará un \texttt{Queue} donde que la tarea del driver publicara los eventos. Este elemento tambien residirá en la tarea \texttt{scpi\_engine(*pParam)}. La cola de errores tambien sera inyectada en el driver a en la inicialización.
+
+\subsection{información de eventos}
+Finalmente la interfaz que implementaran los drives debe tener un metodo para que \texttt{scpi\_engine(*pParam)} le informe de eventos como que se terminió de procesar un mensaje. Aunque los mensajes en el stream de salida son indicios de que la tarea termino de procesar una consulta, sin este metodo no hay forma de visarle al driver que el comando fué una configuración sin respuesta. Este metodo será \texttt{bool inform\_events(iface\_event\_t event)} podra informar alguno de los siguientes eventos:
+\begin{minted}{c}
+    typedef enum
+    {
+        /* events from SCPI engine to driver*/
+        EV_SCPI_NONE = 0x00,
+        EV_SCPI_MSG_DONE = 0x01,
+        EV_SCPI_PROCESS_DONE = 0x02, 
+    } iface_event_t;
+\end{minted}
+
+Este evento se de debe informar cada vez que un comando sea procesado o en su defecto cada chunk genere una salida.

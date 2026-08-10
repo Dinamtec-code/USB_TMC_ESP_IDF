@@ -58,7 +58,7 @@ void tmc_hal_init(void)
       .event_cb = NULL,
       .event_arg = NULL,
   };
-  driver_register(NULL);
+  // driver_register(NULL);
   esp_err_t err = tinyusb_driver_install(&tusb_cfg);
   ESP_LOGI(TAG_USB, "Driver install retornó: %d", err);
   ESP_ERROR_CHECK(err);

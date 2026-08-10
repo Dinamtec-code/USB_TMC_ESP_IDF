@@ -10,14 +10,6 @@ extern "C"
 {
 #endif
 
-    typedef enum
-    {
-        STATUS_NONE = 0X00,
-        STATUS_REPLY_PROCESS = 0X01,
-        STATUS_REPLY_READY = 0X02,
-        STATUS_REPLY_DONE = 0X04
-    } scpi_status_t;
-
     /* Status Byte Masks (IEEE 488.2) */
     typedef enum
     {
@@ -30,35 +22,27 @@ extern "C"
     /* ESTADOS DE LA FSM */
     typedef enum
     {
-        STATE_IDLE = 0,
-        STATE_RECEIVING,
-        STATE_AWAITING_REPLY,
-        STATE_REPLY_READY
+        STATE_TMC_IDLE = 0,
+        STATE_TMC_RECEIVING,
+        STATE_TMC_PROCESSING,
+        STATE_TMC_REPLY_READY
     } usb_tmc_state_t;
 
-    /* EVENTOS DE LA FSM */
+    /* EVENTOS CONTROLANDOS POR LA FSM */
     typedef enum
     {
-        EV_RX_START,   // Inicia recepción (Bulk OUT)
-        EV_RX_CHUNK,   // Llega un pedazo de datos
-        EV_RX_END,     // Llega el final del mensaje
-        EV_TX_REQ,     // Host pide leer (Bulk IN)
-        EV_TX_DONE,    // Host terminó de leer
-        EV_SCPI_REPLY, // libscpi generó respuesta
-        EV_SCPI_DONE   // libscpi no encontró query
+        EV_TMC_RX_START, // Inicia recepción (Bulk OUT)
+        EV_TMC_RX_CHUNK, // Llega un pedazo de datos
+        EV_TMC_RX_END,   // Llega el final del mensaje
+        EV_TMC_TX_REQ,   // Host pide leer (Bulk IN)
+        EV_TMC_TX_DONE,  // Host terminó de leer
+        EV_TMC_SCPI_DONE // libscpi no encontró query
     } usb_tmc_event_t;
 
     void driver_register(StreamBufferHandle_t stream);
-    void usb_tmc_set_scpi_status(scpi_status_t status);
-    /**
-     * @brief Procesa un evento en la máquina de estados USBTMC.
-     */
     void usb_tmc_fsm_process(usb_tmc_event_t event, void *data, size_t len);
-
-    /**
-     * @brief Obtiene el Status Byte actual (usado por el callback de TinyUSB).
-     */
     usb_tmc_status_t usb_tmc_get_stb(void);
+    iface_struct_t *usb_tmc_get_iface(void);
 
 #ifdef __cplusplus
 }
