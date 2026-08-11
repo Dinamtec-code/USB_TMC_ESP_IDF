@@ -33,6 +33,11 @@ usbtmc_response_capabilities_488_t const *tud_usbtmc_get_capabilities_cb(void)
     return &tud_usbtmc_app_capabilities;
 }
 
+#define IEEE4882_STB_QUESTIONABLE (0x08u)
+#define IEEE4882_STB_MAV          (0x10u)
+#define IEEE4882_STB_SER          (0x20u)
+#define IEEE4882_STB_SRQ          (0x40u)
+
 // 2. Callback de apertura (Requerido para inicializar el bus)
 void tud_usbtmc_open_cb(uint8_t interface_id)
 {

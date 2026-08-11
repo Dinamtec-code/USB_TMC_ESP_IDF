@@ -137,7 +137,6 @@ void start_new_reception()
 static inline void iface_msg_mark_ready(iface_msg_handle_t msg)
 {
     iface_msg_set_state(msg, IFACE_MSG_READY);
-    xQueueSend(usb_drv_ctx.rx_msg_queue, (void *)&msg, (TickType_t)0);
 }
 
 static inline void iface_msg_mark_free(iface_msg_handle_t msg)
@@ -177,7 +176,10 @@ void usb_tmc_fsm_process(usb_tmc_event_t event, void *data, size_t len)
             // aquí se puede setear el ESB bit.
             // usb_tmc_status_reg |= STB_ESB_BIT;
 
-            ESP_LOGI(TAG, "Recepción Completa");
+            ESP_LOGI(TAG, "Recepción Completa con %d datos", (int)xStreamBufferBytesAvailable(actual_msg->stream));
+            
+            xQueueSend(usb_drv_ctx.rx_msg_queue, (void *)&actual_msg, (TickType_t)0);
+
             tmc_state = STATE_TMC_PROCESSING;
 
             // Le decimos a TinyUSB que estamos listos para recibir comandos nuevos
@@ -191,8 +193,9 @@ void usb_tmc_fsm_process(usb_tmc_event_t event, void *data, size_t len)
     case STATE_TMC_PROCESSING:
         if (event == EV_TMC_SCPI_DONE)
         {
+            ESP_LOGI(TAG, "Recepcion Procesada");
             tx_length = xStreamBufferBytesAvailable(usb_drv_ctx.tx_stream);
-
+            ESP_LOGI(TAG, "Cantidad de datos generados: %d",(int)tx_length);
             if (tx_length > 0)
             {
                 // Avisamos al registro 488.2 que hay un mensaje disponible
@@ -224,6 +227,7 @@ void usb_tmc_fsm_process(usb_tmc_event_t event, void *data, size_t len)
 
             // Transmitimos. Si eof == true, TinyUSB asertará el bit EOM en el header
             tud_usbtmc_transmit_dev_msg_data((const void *)tx_buffer, tx_length, eof, false);
+            ESP_LOGI(TAG, "Enviando respuesta");
         }
         else if (event == EV_TMC_TX_DONE)
         {
@@ -234,6 +238,8 @@ void usb_tmc_fsm_process(usb_tmc_event_t event, void *data, size_t len)
 
                 iface_msg_mark_free(last_msg);
                 tmc_state = STATE_TMC_IDLE;
+                ESP_LOGI(TAG, "Respuesta enviada");
+
             }
         }
         else if (event == EV_TMC_RX_START)

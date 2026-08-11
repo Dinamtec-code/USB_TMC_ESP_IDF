@@ -75,7 +75,7 @@ void app_main(void)
     ESP_ERROR_CHECK(ledc_set_duty(LEDC_MODE, LEDC_CHANNEL, duty));
     ESP_ERROR_CHECK(ledc_update_duty(LEDC_MODE, LEDC_CHANNEL));
 
-    xTaskCreatePinnedToCore(scpi_engine_task, "Task_COMM", 8024 * 8, NULL, 6, NULL, 1);
+    xTaskCreatePinnedToCore(scpi_engine_task, "Task_COMM", 8024, NULL, 4, NULL, 1);
 
     vTaskDelete(NULL);
 }

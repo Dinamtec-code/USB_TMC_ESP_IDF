@@ -16,6 +16,9 @@
 #include "usb_tmc_process.h"
 //#include "usb_tmc_init.h"
 
+
+const static char *TAG = "SCPI engine";
+
 static int scpi_error_cb(scpi_t *ctx, int_fast16_t err);
 
 static scpi_t scpi_context;
@@ -47,64 +50,79 @@ static inline void iface_msg_mark_processing(iface_msg_handle_t msg)
     iface_msg_set_state(msg, IFACE_MSG_PROCESSING);
 }
 
+
 void scpi_engine_task(void *pvParameters)
 {
     iface_init();
+    scpi_engine_init();
 
     while (1)
     {
-        // Dormimos hasta recibir el EV_RX_END
-        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-
-        // Esperamos que llegue un mensaje
-        if (actual_msg == NULL || iface_msg_get_state(actual_msg) != IFACE_MSG_READY)
+        // 1. Bloquear la tarea de forma segura hasta que la interfaz notifique un mensaje en la cola
+        iface_msg_handle_t nuevo_mensaje = NULL;
+        
+        // Asumiendo que message_q guarda punteros a los mensajes (iface_msg_handle_t)
+        if (xQueueReceive(message_q, &nuevo_mensaje, portMAX_DELAY) == pdTRUE) 
         {
-            // Preguntar si hay mensages en el pool
-            msg_count = active_iface->get_msg_available();
-
-            if (msg_count > 0)
-            {
-                actual_msg = active_iface->get_next_slot();
-            }
+            actual_msg = nuevo_mensaje;
         }
 
+        // 2. Control de seguridad: Si por alguna razón sigue siendo NULL, saltamos el ciclo
+        if (actual_msg == NULL) {
+            continue; 
+        }
+
+        // 3. Procesar el estado de manera segura sabiendo que actual_msg existe
         if (iface_msg_get_state(actual_msg) == IFACE_MSG_READY)
         {
+            ESP_LOGI(TAG, "Mensaje recibido y pasando a ser procesado");
             iface_msg_set_state(actual_msg, IFACE_MSG_PROCESSING);
             active_iface->inform_parser_events(EV_SCPI_MSG_DONE);
         }
+
         size_t bytes_read;
         do
         {
-            bytes_read = xStreamBufferReceive(actual_msg->stream, local_buf, RX_LOCAL_SIZE, 0);
-            if (bytes_read > 0)
-            {
-                SCPI_Input(&scpi_context, local_buf, bytes_read);
+            // Protección extra: asegurarse de que el stream existe dentro del mensaje
+            if (actual_msg->stream != NULL) {
+                bytes_read = xStreamBufferReceive(actual_msg->stream, local_buf, RX_LOCAL_SIZE, 0);
+                ESP_LOGI(TAG, "Se procesaran %d datos", (int)bytes_read);
+                if (bytes_read > 0)
+                {
+                    SCPI_Input(&scpi_context, local_buf, bytes_read);
+                }
+                ESP_LOGI(TAG, "Datos procesados");
+            } else {
+                bytes_read = 0;
+                ESP_LOGI(TAG, "No quedan datos para procesar en el stream");
             }
         } while (bytes_read > 0);
-        // Revisar y publicar errores del slot antes de limpiar los errores marcarlo como libre
+        // Revisar y publicar errores del slot antes de limpiar los errores y marcarlo como libre
         if (iface_msg_is_error(actual_msg, MSG_ERR_OVERFLOW))
         {
             scpi_error_cb(&scpi_context, 350);
             iface_msg_clear_error_flag(actual_msg, MSG_ERR_OVERFLOW);
+            ESP_LOGI(TAG, "Se publico y limpio el error MSG_ERR_OVERFLOW");
+
         }
         if (iface_msg_is_error(actual_msg, MSG_ERR_INTERRUPT))
         {
             scpi_error_cb(&scpi_context, 410);
             iface_msg_clear_error_flag(actual_msg, MSG_ERR_INTERRUPT);
+            ESP_LOGI(TAG, "Se publico y limpio el error MSG_ERR_INTERRUPT");
+
         }
         if (iface_msg_is_error(actual_msg, MSG_ERR_UNTERMIN))
         {
             scpi_error_cb(&scpi_context, 420);
-
             iface_msg_clear_error_flag(actual_msg, MSG_ERR_UNTERMIN);
+            ESP_LOGI(TAG, "Se publico y limpio el error MSG_ERR_UNTERMIN");
         }
 
         active_iface->inform_parser_events(EV_SCPI_PROCESS_DONE);
-
-        // --- AGREGAR ESTO ---
+        ESP_LOGI(TAG, "Se informo al driver que el mensage se proceso");
         iface_msg_reset(actual_msg); // Pone el estado en FREE y limpia banderas
-        actual_msg = NULL;
+        actual_msg = NULL; // Liberamos el puntero para el próximo ciclo
     }
 }
 

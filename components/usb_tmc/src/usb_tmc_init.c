@@ -13,7 +13,7 @@
 #include "usb_tmc_process.h"
 #include "esp_log.h"
 
-static const char *TAG_USB = "USB_TMC_drv";
+static const char *TAG_USB = "USB_TMC_drv_init";
 
 #define IEEE4882_STB_QUESTIONABLE (0x08u)
 #define IEEE4882_STB_MAV (0x10u)
