@@ -19,6 +19,7 @@
 
 #include "usb_tmc_cb.h"
 #include "usb_tmc_process.h"
+#include "usb_tmc_init.h"
 
 const static char *TAG = "tmc_fsm_task";
 #define TX_BUFFER_SIZE 256
@@ -50,7 +51,7 @@ static bool usb_tmc_init(StreamBufferHandle_t tx_stream, QueueHandle_t rx_msg_qu
     usb_drv_ctx.tx_stream = tx_stream;
     usb_drv_ctx.rx_msg_queue = rx_msg_queue;
     // TODO: inicializar hardware si es necesario
-    //tmc_hal_init();
+    tmc_hal_init();
     usb_drv_ctx.running = true;
 
     return true;

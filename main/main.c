@@ -13,6 +13,8 @@
 #include "driver/gpio.h" // Necesario en v6.0 para gpio_num_t
 #include "esp_err.h"
 
+#include "scpi_engine.h"
+
 static const char *TAG = "APP_MAIN";
 
 #define LEDC_TIMER LEDC_TIMER_0
@@ -63,7 +65,8 @@ void app_main(void)
     }
     ESP_ERROR_CHECK(ret1);
 
-    tmc_hal_init();
+    // tmc_hal_init();
+    // iface_init();
 
     example_ledc_init();
 
@@ -72,7 +75,7 @@ void app_main(void)
     ESP_ERROR_CHECK(ledc_set_duty(LEDC_MODE, LEDC_CHANNEL, duty));
     ESP_ERROR_CHECK(ledc_update_duty(LEDC_MODE, LEDC_CHANNEL));
 
-    // ret2 = xTaskCreatePinnedToCore(usbtmc_app_task, "Task_COMM", 1024 * 8, NULL, 6, NULL, 1);
+    xTaskCreatePinnedToCore(scpi_engine_task, "Task_COMM", 8024 * 8, NULL, 6, NULL, 1);
 
     vTaskDelete(NULL);
 }

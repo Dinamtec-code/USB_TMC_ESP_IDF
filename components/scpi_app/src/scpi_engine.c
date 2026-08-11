@@ -14,9 +14,9 @@
 #include "scpi_iface_drv.h"
 #include "iface_msg.h"
 #include "usb_tmc_process.h"
+//#include "usb_tmc_init.h"
 
 static int scpi_error_cb(scpi_t *ctx, int_fast16_t err);
-void external_fsm_update(void);
 
 static scpi_t scpi_context;
 
@@ -35,6 +35,7 @@ void iface_init(void)
     tx_stream = iface_tx_stream_init();
     message_q = iface_msg_queue_init();
     scpi_drv_register_iface(iface_tmc);
+    iface_tmc->init(tx_stream, message_q);
 }
 
 int msg_count;
