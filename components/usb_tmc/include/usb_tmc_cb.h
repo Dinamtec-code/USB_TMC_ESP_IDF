@@ -1,10 +1,12 @@
 #ifndef USB_TMC_CB_
 #define USB_TMC_CB_
 
+#include <stdint.h>
+#include <stddef.h>
+
 #include "tusb.h"
 #include "tinyusb.h"
 #include "class/usbtmc/usbtmc_device.h"
-#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C"

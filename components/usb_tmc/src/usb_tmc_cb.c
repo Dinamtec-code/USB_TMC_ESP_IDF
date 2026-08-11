@@ -1,9 +1,11 @@
+#include <stdint.h>
+#include <stddef.h>
+#include <string.h>
+#include <stdlib.h>
+
 #include "tusb.h"
 #include "tinyusb.h"
 #include "class/usbtmc/usbtmc_device.h"
-#include <string.h>
-#include <stdlib.h>
-#include <stdint.h>
 #include "esp_log.h"
 
 #include "usb_tmc_process.h"
@@ -47,10 +49,10 @@ bool tud_usbtmc_msgBulkOut_start_cb(usbtmc_msg_request_dev_dep_out const *msgHea
     ESP_LOGI(TAG_TMC, "Mensaje bulk out start");
 
     // El estándar USB-TMC define que el Bit 0 de bmTransferAttributes es el flag EOM
-    current_msg_has_eom = (msgHeader->bmTransferAttributes & 0x01) != 0;
+    current_msg_has_eom = msgHeader->bmTransferAttributes.EOM != 0;
 
     uint32_t transfer_size = msgHeader->TransferSize;
-    ESP_LOGI(TAG_TMC, "transferSize: %lu, EOM: %d", transfer_size, current_msg_has_eom);
+    ESP_LOGI(TAG_TMC, "transferSize: %lu, EOM: %d", transfer_size, (int)current_msg_has_eom);
 
     // Avisamos a la FSM que empezamos a recibir datos (Bulk OUT)
     usb_tmc_fsm_process(EV_TMC_RX_START, NULL, 0);

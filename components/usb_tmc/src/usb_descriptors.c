@@ -1,11 +1,12 @@
+#include <stdint.h>
+#include <stddef.h>
+
 #include "usb_tmc_config.h"
 #include "usb_tmc_init.h"
 
 #include "device/usbd.h"
 #include "class/usbtmc/usbtmc.h"
 #include "class/usbtmc/usbtmc_device.h"
-
-#include <stdint.h>
 
 // ============================================================================
 // CONFIGURACIÓN DE IDENTIFICADORES (Modificable según tu hardware/empresa)

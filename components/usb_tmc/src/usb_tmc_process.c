@@ -1,12 +1,21 @@
+#include <stdint.h>
+#include <stddef.h>
+#include <stdbool.h>
+#include <string.h>
+
+#include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/stream_buffer.h"
 #include "freertos/queue.h"
-#include "freertos/FreeRTOS.h"
+
+#include "esp_log.h"
+
 #include "tusb.h"
 #include "class/usbtmc/usbtmc_device.h"
+#include "tinyusb.h"
+
 #include "scpi/scpi.h"
 #include "scpi_iface_drv.h"
-#include "esp_log.h"
 
 #include "usb_tmc_cb.h"
 #include "usb_tmc_process.h"
@@ -17,13 +26,6 @@ const static char *TAG = "tmc_fsm_task";
  * Driver
  *
  ************************************************************************/
-typedef struct DRV_CONTEXT
-{
-    StreamBufferHandle_t tx_stream; // Inyectado por la App
-    QueueHandle_t rx_queue;         // Inyectado por la App (Cola de punteros a mensajes)
-    bool running;
-} drv_context_t;
-
 static drv_context_t usb_drv_ctx = {0};
 
 static volatile usb_tmc_state_t tmc_state = STATE_TMC_IDLE;
@@ -36,28 +38,19 @@ iface_msg_handle_t last_msg = NULL;
 uint8_t tx_buffer[TX_BUFFER_SIZE] = {0};
 
 /**
- * @brief Envial al a la app la estructura del driver .
- * @return iface_handler_t puntero a la estructura estatica con los datos y callbacks para la comunicacion driver app
- */
-iface_handler_t usb_tmc_get_iface(void)
-{
-    return (iface_handler_t)(&usb_tmc_iface);
-}
-
-/**
  * @brief Se inicia el driver .
  * @return iface_struct_t la estructura estatica con los datos y callbacks para la comunicacion driver app
  */
-static bool usb_tmc_init(StreamBufferHandle_t tx_stream, QueueHandle_t rx_queue)
+static bool usb_tmc_init(StreamBufferHandle_t tx_stream, QueueHandle_t rx_msg_queue)
 {
-    if (tx_stream == NULL || rx_queue == NULL)
+    if (tx_stream == NULL || rx_msg_queue == NULL)
     {
         return false;
     }
     usb_drv_ctx.tx_stream = tx_stream;
-    usb_drv_ctx.rx_queue = rx_queue;
+    usb_drv_ctx.rx_msg_queue = rx_msg_queue;
     // TODO: inicializar hardware si es necesario
-    tmc_hal_init();
+    //tmc_hal_init();
     usb_drv_ctx.running = true;
 
     return true;
@@ -66,7 +59,7 @@ static bool usb_tmc_init(StreamBufferHandle_t tx_stream, QueueHandle_t rx_queue)
 static void usb_tmc_deinit()
 {
     usb_drv_ctx.tx_stream = NULL;
-    usb_drv_ctx.rx_queue = NULL;
+    usb_drv_ctx.rx_msg_queue = NULL;
     // TODO: desactivar el hardware necesario
     usb_drv_ctx.running = false;
 }
@@ -87,7 +80,7 @@ static bool usb_tmc_inform_event(iface_event_t event)
 }
 
 static iface_struct_t usb_tmc_iface = {
-    .context = NULL,
+    .context = {0},
     .id = DRV_IFACE_USBTMC,
     .name = "USB-TMC",
     /* initialized method */
@@ -98,6 +91,15 @@ static iface_struct_t usb_tmc_iface = {
     //.get_next_slot,
     //.send_msg,
     .inform_parser_events = usb_tmc_inform_event}; // la app le avisa al driver que termino de procesar los datos
+
+/**
+ * @brief Envial al a la app la estructura del driver .
+ * @return iface_handler_t puntero a la estructura estatica con los datos y callbacks para la comunicacion driver app
+ */
+iface_handler_t usb_tmc_get_iface(void)
+{
+    return (iface_handler_t)(&usb_tmc_iface);
+}
 
 usb_tmc_status_t usb_tmc_get_stb(void)
 {
@@ -134,7 +136,7 @@ void start_new_reception()
 static inline void iface_msg_mark_ready(iface_msg_handle_t msg)
 {
     iface_msg_set_state(msg, IFACE_MSG_READY);
-    xQueueSend(usb_drv_ctx.rx_queue, (void *)&msg, (TickType_t)0);
+    xQueueSend(usb_drv_ctx.rx_msg_queue, (void *)&msg, (TickType_t)0);
 }
 
 static inline void iface_msg_mark_free(iface_msg_handle_t msg)
@@ -144,7 +146,6 @@ static inline void iface_msg_mark_free(iface_msg_handle_t msg)
 
 void usb_tmc_fsm_process(usb_tmc_event_t event, void *data, size_t len)
 {
-    external_fsm_update();
     switch (tmc_state)
     {
     case STATE_TMC_IDLE:
@@ -156,7 +157,7 @@ void usb_tmc_fsm_process(usb_tmc_event_t event, void *data, size_t len)
         {
             actual_msg = usb_tmc_iface.get_free_slot();
             iface_msg_set_error_flag(actual_msg, MSG_ERR_UNTERMIN); // Publicamos el error -420
-            xQueueSend(usb_drv_ctx.rx_queue, (void *)&actual_msg, (TickType_t)0);
+            xQueueSend(usb_drv_ctx.rx_msg_queue, (void *)&actual_msg, (TickType_t)0);
 
             ESP_LOGW(TAG, "Error -420: Query Unterminated");
             clear_tx_buffer();

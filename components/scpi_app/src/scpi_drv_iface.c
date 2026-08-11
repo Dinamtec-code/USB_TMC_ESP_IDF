@@ -1,10 +1,13 @@
 #include "scpi_iface_drv.h"
 #include "iface_msg.h"
+#include <stdint.h>
+#include <stddef.h>
+#include <stdbool.h>
+#include "freertos/FreeRTOS.h"
 #include "freertos/stream_buffer.h"
 #include "freertos/queue.h"
-#include "freertos/FreeRTOS.h"
 
-portMUX_TYPE iface_spinlock = portMUX_INITIALIZER_UNLOCKED;
+/* iface_spinlock is defined in iface_msg.c, declared extern in iface_msg.h */
 
 /* Array estático de mensajes */
 static iface_msg_struct_t iface_msg_pool[IFACE_MSG_POOL_SIZE];
@@ -36,7 +39,7 @@ static iface_msg_handle_t iface_get_free_slot(void)
             xStreamBufferReset(msg->stream);
             return msg;
         }
-        portEXIT_CRITICAL();
+        portEXIT_CRITICAL(&iface_spinlock);
     }
     return NULL; // No hay slots libres
 }
@@ -55,22 +58,6 @@ static size_t iface_get_msg_available(void)
 {
     return uxQueueMessagesWaiting(rx_msg_queue);
 }
-
-/* En la estructura de la interfaz*/
-struct SCPI_IFACE
-{
-    drv_context_t context;
-    iface_id_t id;
-    const char name;
-    /* initialized method */
-    scpi_drv_init_t init;
-    scpi_drv_deinit_t deinit;
-    /* scpi service method */
-    get_slot_t get_free_slot;
-    get_next_t get_next_slot;
-    size_t (*get_msg_available)(void);
-    inform_parser_events_t inform_parser_events;
-};
 
 /*Tabla de interfaces disponibles*/
 iface_handler_t iface_table[DRV_IFACE_MAX] = {NULL};
@@ -96,7 +83,7 @@ static bool iface_msg_pool_init(QueueHandle_t rx_q)
             return false;
 
         msg->state = IFACE_MSG_FREE;
-        msg->error = MSG_ERR_NONE;
+        msg->error_flags = MSG_ERR_NONE;
     }
     return true;
 }
@@ -115,7 +102,7 @@ StreamBufferHandle_t iface_tx_stream_init(void)
 
 QueueHandle_t iface_msg_queue_init(void)
 {
-    QueueHandle_t qu = QueueCreateStatic(
+    QueueHandle_t qu = xQueueCreateStatic(
         IFACE_MSG_POOL_SIZE,
         IFACE_MSG_H_SIZE,
         queue_memory,
@@ -137,7 +124,7 @@ void scpi_drv_register_iface(iface_handler_t iface)
     }
 }
 
-void scpi_drv_unregister_iface(iface_handler_t *iface)
+void scpi_drv_unregister_iface(iface_handler_t iface)
 {
     if (iface && iface->id < DRV_IFACE_MAX)
     {
@@ -148,6 +135,6 @@ void scpi_drv_unregister_iface(iface_handler_t *iface)
 iface_handler_t comm_get_iface(iface_id_t id)
 {
     if (id < DRV_IFACE_MAX)
-        return &(iface_table[id]);
+        return (iface_table[id]);
     return NULL;
 }

@@ -1,12 +1,17 @@
 #ifndef SCPI_IFACE_DVR_H_
 #define SCPI_IFACE_DVR_H_
 
+#include <stdint.h>
+#include <stddef.h>
+#include <stdbool.h>
+
+#include "freertos/FreeRTOS.h"
 #include "freertos/stream_buffer.h"
 #include "freertos/queue.h"
-#include "freertos/FreeRTOS.h"
+
+#include "scpi/scpi.h"
 #include "scpi_engine.h"
 #include "iface_msg.h"
-#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C"
@@ -62,11 +67,27 @@ extern "C"
     typedef iface_msg_handle_t (*get_next_t)(void);
     typedef bool (*inform_parser_events_t)(iface_event_t event);
 
+    /* En la estructura de la interfaz*/
+    struct SCPI_IFACE
+    {
+        drv_context_t context;
+        iface_id_t id;
+        const char *name;
+        /* initialized method */
+        scpi_drv_init_t init;
+        scpi_drv_deinit_t deinit;
+        /* scpi service method */
+        get_slot_t get_free_slot;
+        get_next_t get_next_slot;
+        size_t (*get_msg_available)(void);
+        inform_parser_events_t inform_parser_events;
+    };
+
     typedef struct SCPI_IFACE *iface_handler_t;
     typedef struct SCPI_IFACE iface_struct_t;
 
     void scpi_drv_register_iface(iface_handler_t iface);
-    void scpi_drv_unregister_iface(iface_handler_t *iface);
+    void scpi_drv_unregister_iface(iface_handler_t iface);
     iface_handler_t comm_get_iface(iface_id_t id);
     StreamBufferHandle_t iface_tx_stream_init(void);
     QueueHandle_t iface_msg_queue_init(void);

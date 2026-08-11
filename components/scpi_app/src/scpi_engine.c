@@ -1,18 +1,22 @@
 
+#include <stdint.h>
+#include <stddef.h>
+#include <stdlib.h>
+
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/stream_buffer.h"
 #include "freertos/queue.h"
 #include "esp_log.h"
 
-#include <stdlib.h>
-#include <stdint.h>
-
 #include "scpi/scpi.h"
 #include "scpi_engine.h"
-// #include "usb_tmc_process.h"
 #include "scpi_iface_drv.h"
 #include "iface_msg.h"
+#include "usb_tmc_process.h"
+
+static int scpi_error_cb(scpi_t *ctx, int_fast16_t err);
+void external_fsm_update(void);
 
 static scpi_t scpi_context;
 
@@ -26,7 +30,7 @@ static iface_msg_handle_t actual_msg = NULL;
 void iface_init(void)
 {
     iface_handler_t iface_tmc = usb_tmc_get_iface();
-    active_iface = &iface_tmc;
+    active_iface = iface_tmc;
 
     tx_stream = iface_tx_stream_init();
     message_q = iface_msg_queue_init();

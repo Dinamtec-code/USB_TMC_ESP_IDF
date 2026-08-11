@@ -1,8 +1,10 @@
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
+#include <stdint.h>
+#include <stddef.h>
 #include <string.h>
 #include <stdlib.h>
-#include <stdint.h>
+
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 #include "tusb.h"
 #include "tinyusb.h"

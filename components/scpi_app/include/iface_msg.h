@@ -7,17 +7,16 @@ extern "C"
 #endif
 
 #include <stdint.h>
+#include <stddef.h>
 #include <stdbool.h>
 #include "freertos/FreeRTOS.h"
+#include "freertos/portmacro.h"
 #include "freertos/stream_buffer.h"
 #include "freertos/queue.h"
 
-#define RX_STREAM_BUFFER_SIZE 1024
-    // --- Definición de la Interfaz ---
+extern portMUX_TYPE iface_spinlock;
 
-    // Handle opaco: El usuario solo conoce el puntero.
-    typedef struct IFACE_MSG *iface_msg_handle_t;
-    typedef struct IFACE_MSG iface_msg_struct_t;
+#define RX_STREAM_BUFFER_SIZE 1024
 
     typedef enum
     {
@@ -34,6 +33,20 @@ extern "C"
         MSG_ERR_INTERRUPT = (1 << 1),
         MSG_ERR_UNTERMIN = (1 << 2)
     } iface_msg_error_flags_t;
+
+    // --- Definición de la Interfaz ---
+    struct IFACE_MSG
+    {
+        iface_msg_state_t state;
+        iface_msg_error_flags_t error_flags;
+        StreamBufferHandle_t stream;
+        StaticStreamBuffer_t stream_buffer_Struct;
+        uint8_t stream_memory[RX_STREAM_BUFFER_SIZE + 1];
+    };
+
+    // Handle opaco: El usuario solo conoce el puntero.
+    typedef struct IFACE_MSG *iface_msg_handle_t;
+    typedef struct IFACE_MSG iface_msg_struct_t;
 
     // --- Métodos de la Interfaz (API Pública) ---
 

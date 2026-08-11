@@ -1,8 +1,11 @@
 #include "iface_msg.h"
 #include <string.h>
+#include <stdint.h>
+#include <stddef.h>
+#include <stdbool.h>
+#include "freertos/FreeRTOS.h"
 #include "freertos/stream_buffer.h"
 #include "freertos/queue.h"
-#include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
 

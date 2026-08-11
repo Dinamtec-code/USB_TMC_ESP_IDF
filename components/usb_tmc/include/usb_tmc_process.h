@@ -1,9 +1,11 @@
 #ifndef USB_TMC_PROCESS_H_
 #define USB_TMC_PROCESS_H_
 
-#include "scpi_iface_drv.h"
 #include <stdint.h>
 #include <stddef.h>
+#include <stdbool.h>
+
+#include "scpi_iface_drv.h"
 
 #ifdef __cplusplus
 extern "C"

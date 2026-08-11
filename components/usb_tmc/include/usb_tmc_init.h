@@ -1,6 +1,9 @@
 #ifndef USB_TMC_INIT_H_
 #define USB_TMC_INIT_H_
 
+#include <stdint.h>
+#include <stddef.h>
+
 #include "tinyusb.h"
 #include "tusb.h"
 
