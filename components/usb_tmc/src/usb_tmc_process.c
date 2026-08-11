@@ -1,6 +1,7 @@
-#include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/stream_buffer.h"
+#include "freertos/queue.h"
+#include "freertos/FreeRTOS.h"
 #include "tusb.h"
 #include "class/usbtmc/usbtmc_device.h"
 #include "scpi/scpi.h"
@@ -10,82 +11,71 @@
 #include "usb_tmc_cb.h"
 #include "usb_tmc_process.h"
 
-#define TX_STREAM_BUFFER_SIZE 1024
-
 const static char *TAG = "tmc_fsm_task";
-
+#define TX_BUFFER_SIZE 256
 /************************************************************************
  * Driver
  *
  ************************************************************************/
-static volatile usb_tmc_state_t current_state = STATE_TMC_IDLE;
+typedef struct DRV_CONTEXT
+{
+    StreamBufferHandle_t tx_stream; // Inyectado por la App
+    QueueHandle_t rx_queue;         // Inyectado por la App (Cola de punteros a mensajes)
+    bool running;
+} drv_context_t;
+
+static drv_context_t usb_drv_ctx = {0};
+
+static volatile usb_tmc_state_t tmc_state = STATE_TMC_IDLE;
 static volatile usb_tmc_status_t usb_tmc_status_reg = STB_NONE;
 
-volatile bool abort_current_tx = false; // Bandera compartida
-
-static uint8_t tx_buffer[TX_STREAM_BUFFER_SIZE];
-static scpi_status_t current_scpi_status = STATUS_SCPI_NONE;
-
-StreamBufferHandle_t rx_stream = NULL;
-StreamBufferHandle_t tx_stream = NULL;
-static QueueHandle_t drv_error_q = NULL;
-
 static size_t tx_length = 0;
-const size_t xTriggerLevel = 1;
+iface_msg_handle_t actual_msg = NULL;
+iface_msg_handle_t last_msg = NULL;
 
-static iface_status_t usb_tmc_get_status(void)
+uint8_t tx_buffer[TX_BUFFER_SIZE] = {0};
+
+/**
+ * @brief Envial al a la app la estructura del driver .
+ * @return iface_handler_t puntero a la estructura estatica con los datos y callbacks para la comunicacion driver app
+ */
+iface_handler_t usb_tmc_get_iface(void)
 {
-    return SCPI_IFACE_NONE;
+    return (iface_handler_t)(&usb_tmc_iface);
 }
 
-static bool usb_tmc_set_rx_stream(StreamBufferHandle_t stream)
+/**
+ * @brief Se inicia el driver .
+ * @return iface_struct_t la estructura estatica con los datos y callbacks para la comunicacion driver app
+ */
+static bool usb_tmc_init(StreamBufferHandle_t tx_stream, QueueHandle_t rx_queue)
 {
-    if (stream == NULL)
+    if (tx_stream == NULL || rx_queue == NULL)
     {
         return false;
     }
-    rx_stream = stream;
+    usb_drv_ctx.tx_stream = tx_stream;
+    usb_drv_ctx.rx_queue = rx_queue;
+    // TODO: inicializar hardware si es necesario
+    tmc_hal_init();
+    usb_drv_ctx.running = true;
+
     return true;
 }
 
-static bool usb_tmc_set_tx_stream(StreamBufferHandle_t stream)
+static void usb_tmc_deinit()
 {
-    if (stream == NULL)
-    {
-        return false;
-    }
-    tx_stream = stream;
-    return true;
-}
-
-static bool usb_tmc_set_error_event_queue(QueueHandle_t error_queue)
-{
-    if (error_queue == NULL)
-    {
-        return false;
-    }
-
-    drv_error_q = error_queue;
-    return true;
-}
-
-static bool usb_tmc_peripheric_init(StreamBufferHandle_t rx_stm, StreamBufferHandle_t tx_stm, QueueHandle_t error_q)
-{
-    if (rx_stm == NULL || tx_stm == NULL || error_q == NULL)
-    {
-        return false;
-    }
-    tx_stream = tx_stm;
-    rx_stream = rx_stm;
-    drv_error_q = error_q;
-    return true;
+    usb_drv_ctx.tx_stream = NULL;
+    usb_drv_ctx.rx_queue = NULL;
+    // TODO: desactivar el hardware necesario
+    usb_drv_ctx.running = false;
 }
 
 static bool usb_tmc_inform_event(iface_event_t event)
 {
     switch (event)
     {
-    case EV_SCPI_MSG_DONE:
+    case EV_SCPI_MSG_DONE: // al agregar la cola de mensajes con estados, el driver puede seguir recibiendo aun cuando el parces no pcocese el mensaje anterior y este estado ya no se controla.
         break;
     case EV_SCPI_PROCESS_DONE:
         usb_tmc_fsm_process(EV_TMC_SCPI_DONE, NULL, 0);
@@ -96,156 +86,160 @@ static bool usb_tmc_inform_event(iface_event_t event)
     return true;
 }
 
-static bool usb_tmc_get_abort_tx()
-{
-    return abort_current_tx;
-}
-
-// Función interna del driver para publicar errores hacia la App
-void driver_publish_error(iface_event_t error_event)
-{
-    if (drv_error_q != NULL)
-    {
-        xQueueSend(drv_error_q, &error_event, 0);
-    }
-}
-
 static iface_struct_t usb_tmc_iface = {
     .context = NULL,
+    .id = DRV_IFACE_USBTMC,
+    .name = "USB-TMC",
     /* initialized method */
-    .set_rx_stream = usb_tmc_set_rx_stream,                  // stream para enviarle los datos recibidos al parser SCPI
-    .set_tx_stream = usb_tmc_set_tx_stream,                  // stream para recibir los datos que el parser SCPI genera como respuesta
-    .set_events_error_queue = usb_tmc_set_error_event_queue, // queue para publicar errores hacia la el motor SCPI
-    .peripheric_init = usb_tmc_peripheric_init,              // inicialización del hardware
-    /* scpi service method */
-    .inform_events = usb_tmc_inform_event};
-
-iface_struct_t *usb_tmc_get_iface(void)
-{
-    return &usb_tmc_iface;
-}
+    .init = usb_tmc_init, // inicialización del hardware
+    .deinit = usb_tmc_deinit,
+    /* scpi service method (implementados en la definicion de la interfaz) */
+    //.get_free_slot,// como el slot es un mensaje se pueden usar sus metodos para editarlo sin pasar por la interfaz
+    //.get_next_slot,
+    //.send_msg,
+    .inform_parser_events = usb_tmc_inform_event}; // la app le avisa al driver que termino de procesar los datos
 
 usb_tmc_status_t usb_tmc_get_stb(void)
 {
     return usb_tmc_status_reg;
 }
 
-void usb_tmc_set_scpi_status(scpi_status_t status)
-{
-    current_scpi_status = status;
-}
-
 static inline void clear_tx_buffer()
 {
-    memset(tx_buffer, 0, TX_STREAM_BUFFER_SIZE);
+    memset(tx_buffer, 0, TX_BUFFER_SIZE);
     tx_length = 0;
 }
 
 static inline void abort_tx(void)
 {
     // Limpiamos los buffers de FreeRTOS de forma atómica para la tarea
-    if (tx_stream != NULL)
-        xStreamBufferReset(tx_stream);
-    if (rx_stream != NULL)
-        xStreamBufferReset(rx_stream);
-
+    if (usb_drv_ctx.tx_stream != NULL)
+        xStreamBufferReset(usb_drv_ctx.tx_stream);
     // Limpiamos la memoria local
     clear_tx_buffer();
+}
+
+void start_new_reception()
+{
+    actual_msg = usb_tmc_iface.get_free_slot();
+    if (actual_msg != NULL)
+    {
+        iface_msg_set_state(actual_msg, IFACE_MSG_RX_ACTIVE);
+        ESP_LOGW(TAG, "New massage");
+        tmc_state = STATE_TMC_RECEIVING;
+    }
+}
+
+// Funciones de conveniencia para la máquina de estados
+static inline void iface_msg_mark_ready(iface_msg_handle_t msg)
+{
+    iface_msg_set_state(msg, IFACE_MSG_READY);
+    xQueueSend(usb_drv_ctx.rx_queue, (void *)&msg, (TickType_t)0);
+}
+
+static inline void iface_msg_mark_free(iface_msg_handle_t msg)
+{
+    iface_msg_set_state(msg, IFACE_MSG_FREE);
 }
 
 void usb_tmc_fsm_process(usb_tmc_event_t event, void *data, size_t len)
 {
     external_fsm_update();
-    switch (current_state)
+    switch (tmc_state)
     {
     case STATE_TMC_IDLE:
         if (event == EV_TMC_RX_START)
         {
-            current_state = STATE_TMC_RECEIVING;
+            start_new_reception();
         }
         else if (event == EV_TMC_TX_REQ)
         {
-            driver_publish_error(EV_SCPI_ERROR_420); // Publicamos el error -420
+            actual_msg = usb_tmc_iface.get_free_slot();
+            iface_msg_set_error_flag(actual_msg, MSG_ERR_UNTERMIN); // Publicamos el error -420
+            xQueueSend(usb_drv_ctx.rx_queue, (void *)&actual_msg, (TickType_t)0);
+
             ESP_LOGW(TAG, "Error -420: Query Unterminated");
             clear_tx_buffer();
             tud_usbtmc_transmit_dev_msg_data(NULL, 0, true, false); // NAK/Empty
         }
         break;
     case STATE_TMC_RECEIVING:
-        if (event == EV_TMC_RX_CHUNK)
+        iface_msg_write(actual_msg, data, len);
+        if (event == EV_TMC_RX_END)
         {
-            // Acción: Guardar fragmento sin bloquear
-            xStreamBufferSend(rx_stream, data, len, 0);
-        }
-        else if (event == EV_TMC_RX_END)
-        {
-            // Acción: Guardar último fragmento y despertar a la tarea SCPI
-            xStreamBufferSend(rx_stream, data, len, 0);
+            // Guardamos el slot que se enviara para ser procesado
+            last_msg = actual_msg;
+            // informamos que el mensaje esta listo para ser procesado
+            iface_msg_mark_ready(actual_msg);
+
             // aquí se puede setear el ESB bit.
             // usb_tmc_status_reg |= STB_ESB_BIT;
 
             ESP_LOGI(TAG, "Recepción Completa");
-            current_state = STATE_TMC_PROCESSING;
+            tmc_state = STATE_TMC_PROCESSING;
+
+            // Le decimos a TinyUSB que estamos listos para recibir comandos nuevos
+            tud_usbtmc_start_bus_read();
+        }
+        else if (event == EV_TMC_RX_CHUNK)
+        {
+            // Acción: Guardar fragmento sin bloquear
         }
         break;
     case STATE_TMC_PROCESSING:
         if (event == EV_TMC_SCPI_DONE)
         {
-            tx_length = xStreamBufferBytesAvailable(tx_stream);
+            tx_length = xStreamBufferBytesAvailable(usb_drv_ctx.tx_stream);
 
             if (tx_length > 0)
             {
-                current_state = STATE_TMC_REPLY_READY; // Corregido
                 // Avisamos al registro 488.2 que hay un mensaje disponible
                 usb_tmc_status_reg |= STB_MAV_BIT;
+                tmc_state = STATE_TMC_REPLY_READY;
             }
             else
             {
-                current_state = STATE_TMC_IDLE;
+                iface_msg_mark_free(last_msg);
+                tmc_state = STATE_TMC_IDLE;
             }
         }
         else if (event == EV_TMC_RX_START)
         {
-            driver_publish_error(EV_SCPI_ERROR_410);
+            iface_msg_set_error_flag(last_msg, MSG_ERR_INTERRUPT);
             ESP_LOGW(TAG, "Error -410: Query Interrupted (Durante procesado)");
             abort_tx();
-            current_state = STATE_TMC_RECEIVING;
+            start_new_reception();
         }
         break;
     case STATE_TMC_REPLY_READY:
         if (event == EV_TMC_TX_REQ)
         {
-            tx_length = xStreamBufferReceive(tx_stream, (void *)tx_buffer, TX_STREAM_BUFFER_SIZE, 0);
+            tx_length = xStreamBufferReceive(usb_drv_ctx.tx_stream, (void *)tx_buffer, TX_BUFFER_SIZE, 0);
             tx_length = tu_min32(tx_length, len); // Respetamos lo que el Host nos pidió leer
 
             // Verificamos si este es el ÚLTIMO fragmento del mensaje
-            bool eof = (xStreamBufferBytesAvailable(tx_stream) == 0);
+            bool eof = (xStreamBufferBytesAvailable(usb_drv_ctx.tx_stream) == 0);
 
             // Transmitimos. Si eof == true, TinyUSB asertará el bit EOM en el header
             tud_usbtmc_transmit_dev_msg_data((const void *)tx_buffer, tx_length, eof, false);
         }
         else if (event == EV_TMC_TX_DONE)
         {
-            // TX_DONE se dispara cada vez que un paquete IN llega al host exitosamente.
-            // Solo debemos salir de este estado si ya no queda nada por enviar.
-            if (xStreamBufferBytesAvailable(tx_stream) == 0)
+            if (xStreamBufferBytesAvailable(usb_drv_ctx.tx_stream) == 0)
             {
                 clear_tx_buffer();
                 usb_tmc_status_reg &= ~STB_MAV_BIT; // ¡MAV se apaga al terminar!
-                current_state = STATE_TMC_IDLE;
 
-                // Le decimos a TinyUSB que estamos listos para recibir comandos nuevos
-                tud_usbtmc_start_bus_read();
+                iface_msg_mark_free(last_msg);
+                tmc_state = STATE_TMC_IDLE;
             }
-            // Si quedan datos, nos quedamos en REPLY_READY. El host hará
-            // un nuevo EV_TMC_TX_REQ para pedir la siguiente parte.
         }
         else if (event == EV_TMC_RX_START)
         {
-            driver_publish_error(EV_SCPI_ERROR_410);
-            ESP_LOGW(TAG, "Error -410: Query Interrupted (Respuesta sin leer)");
+            iface_msg_set_error_flag(last_msg, MSG_ERR_INTERRUPT);
+            ESP_LOGW(TAG, "Error -410: Query Interrupted (Durante procesado)");
             abort_tx();
-            current_state = STATE_TMC_RECEIVING;
+            start_new_reception();
         }
         break;
 

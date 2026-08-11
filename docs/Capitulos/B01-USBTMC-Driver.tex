@@ -119,35 +119,54 @@ Esta maquina puede controlar 5 eventos del host y 1 del SCPI:
 \end{minted}
 
 \subsection{STATE\_TMC\_IDLE}
-\subsubsection*{Eventos controlados permitidos}
-En el primer estado \textbf{STATE\_TMC\_IDLE}, hay solo 2 eventos que pueden ocurrir: \textbf{EV\_TMC\_RX\_START} y \textbf{EV\_TMC\_TX\_REQ}. 
-Cuando el host envía un mensaje, se genera el evento \textbf{EV\_TMC\_RX\_START} y la FSM pasa al estado \textbf{STATE\_TMC\_RECEIVING}. 
-Cuando el host solicita leer, se genera el evento \textbf{EV\_TMC\_TX\_REQ}, en general el host solo puede pedir datos al equipo si antes hizo alguna consulta y esto pone la maquina de estados en \textbf{STATE\_TMC\_PROCESSING}.
+\subsubsection*{Eventos controlados esperados}
+En el primer estado \textbf{STATE\_TMC\_IDLE}, solo hay un evento esperado: \textbf{EV\_TMC\_RX\_START}.
 
-\subsubsection*{Eventos controlados no permitidos}
-Hacer bulkIN (pedido de datos) sin antes hacer una consulta genera un evento \textbf{Error -420: Query Unterminated"} que debemos informar a libscpi para que lo registre. Luego responderemos con un NAK/Empty al host para que continue sin esperar la respuesta.
+Cuando el host envía un mensaje, se genera el evento \textbf{EV\_TMC\_RX\_START} y la FSM pasa al estado \textbf{STATE\_TMC\_RECEIVING}.
+
+\subsubsection*{Eventos controlados no esperados}
+EL evento \textbf{EV\_TMC\_TX\_REQ} aparece cuando el host hacer bulk-in (pedido de datos) sin antes hacer una consulta genera un evento \textbf{Error -420: Query Unterminated"} que debemos informar a libscpi para que lo registre. Luego responderemos con un NAK/Empty al host para que continue sin esperar la respuesta. Como la unica forma de llegar a \textbf{STATE\_TMC\_IDLE} es que un mensage no genere respuesta o que la respuesta anterior ya haya sido enviada, no hay forma de que en este estado sea correcto un pedido de datos si no es por un error del usuario/host.
+\todo{falta controlar eventos de desconecion de la interfaz}
 
 \subsection{STATE\_TMC\_RECEIVING}
-\subsubsection*{Eventos controlados permitidos}
-En este estado solo existen 3 eventos posibles: \textbf{EV\_TMC\_RX\_CHUNK} y \textbf{EV\_TMC\_RX\_END} y \textbf{EV\_TMC\_TX\_REQ}.
-Despues de iniciada una recepción los datos pueden llegar en una sola transferencia, si entran en el endpoint del usb que tiene un tamaño de 64 bytes, o pueden llegar en varios pedazos si el mensaje es mas largo. 
-Cada vez que llega un pedazo de datos se genera el evento \textbf{EV\_TMC\_RX\_CHUNK} y la FSM permanece en el estado \textbf{STATE\_TMC\_RECEIVING}. 
-Cuando llega el final del mensaje se genera el evento \textbf{EV\_TMC\_RX\_END} y la FSM pasa al estado \textbf{STATE\_TMC\_PROCESSING}.
+\subsubsection*{Eventos controlados esperados}
+En este estado solo existen 2 eventos esperados: \textbf{EV\_TMC\_RX\_CHUNK} y \textbf{EV\_TMC\_RX\_END}.
+Despues de iniciada una recepción los datos pueden llegar en una sola transferencia, si entran en el endpoint del usb que tiene un tamaño de 64 bytes, o pueden llegar en varios fragmentos si el mensaje es mas largo. 
+Cada vez que llega un fragmento de datos se genera el evento \textbf{EV\_TMC\_RX\_CHUNK} y la FSM permanece en el estado \textbf{STATE\_TMC\_RECEIVING}. 
+Cuando llega el final del mensaje se genera el evento \textbf{EV\_TMC\_RX\_END} y la FSM pasa al estado \textbf{STATE\_TMC\_PROCESSING}. En este evento es fundamental informar que hay un nuevo mensaje y actualizar el status bytes. Si los mensajes se introducen en una cola se pasa al siguiente, si hay un buffer doble se cambia el buffer.
 
-\subsubsection*{Eventos controlados no permitidos}
-En este caso la unica forma de generar un evento no permitido es que el host pida datos antes de que termine de enviar el mensaje, pero esto solo se produce por un error del controlador usb en el host dispositivo, ya que el host no puede enviar un pedido de datos mientras esta enviando un mensaje.
+\subsubsection*{Eventos controlados no esperados}
+\todo{falta controlar eventos de desconecion de la interfaz}
 
 \subsection{STATE\_TMC\_PROCESSING}
-\subsubsection{Eventos controlados permitidos}
-Aqui solo hay un evento posible: \textbf{EV\_TMC\_SCPI\_DONE}, que se genera cuando libscpi termina de procesar el mensaje recibido. En este mensaje pueden venir desde ninguna a muchas consultas así que la maquina de estados deve revisar el stream de salida para verificar si hay datos disponibles y la FSM pasa al estado \textbf{STATE\_TMC\_REPLY\_READY} o si no hay datos disponivles volver a \textbf{STATE\_TMC\_IDLE}.
+\subsubsection{Eventos controlados esperados}
+Aqui solo hay un evento esperado: \textbf{EV\_TMC\_SCPI\_DONE}, que se genera cuando libscpi termina de procesar el mensaje recibido. En este mensaje pueden venir desde ninguna a muchas consultas así que la maquina de estados debe revisar el stream de salida para verificar si hay datos disponibles y la FSM pasa al estado \textbf{STATE\_TMC\_REPLY\_READY} o si no hay datos disponibles volver a \textbf{STATE\_TMC\_IDLE}.
 
-\subsubsection{Eventos controlados no permitidos}
-En este estado el motor scpi puede tardar algo de tiempo en procesar el mensaje recibido. Si el host envia una nueva consulta generardo un evento de tipo \textbf{EV\_TMC\_RX\_START} antes de que libscpi termine de procesar el mensaje, se genera un evento \textbf{Error -410: Query Interrupted} que debemos informar a libscpi para que lo registre. Tambien se debe reconfigurar la FSM volviendo al estado \textbf{STATE\_TMC\_RECEIVING} para recibir el nuevo mensaje. Tambien se debe descartar cualquier respuesta que esté generando libscpi, lo que se hace limpiando el buffer del libscpi con una bandera atomica antes de enviar el evento \textbf{EV\_TMC\_SCPI\_DONE}.
+\subsubsection{Eventos controlados no esperados}
+En este estado el motor scpi puede tardar algo de tiempo en procesar el mensaje recibido. Si el host envia una nueva consulta generardo un evento de tipo \textbf{EV\_TMC\_RX\_START} antes de que libscpi termine de procesar el mensaje, se genera un evento \textbf{Error -410: Query Interrupted} que debemos informar a libscpi para que lo registre y no envie la respuesta al buffer de salida. Tambien se debe reconfigurar la FSM volviendo al estado \textbf{STATE\_TMC\_RECEIVING} para recibir el nuevo mensaje. Finalmente se debe descartar cualquier respuesta que este en el buffer de salida, lo que se hace limpiando el stream buffer de salida \textbf{EV\_TMC\_SCPI\_DONE}.
 
 \subsection{STATE\_TMC\_REPLY\_READY}
-\subsubsection{Eventos controlados permitidos}
-En este estado hay 2 eventos permitidos posibles: \textbf{EV\_TMC\_TX\_REQ} y \textbf{EV\_TMC\_TX\_DONE}. Cuando el host solicita leer, se genera el evento \textbf{EV\_TMC\_TX\_REQ} y la FSM envia los datos al host. Cuando el host termina de leer, se genera el evento \textbf{EV\_TMC\_TX\_DONE} y la FSM vuelve al estado \textbf{STATE\_TMC\_IDLE}.
+\subsubsection{Eventos controlados esperados}
+En este estado hay 2 eventos esperados posibles: \textbf{EV\_TMC\_TX\_REQ} y \textbf{EV\_TMC\_TX\_DONE}. Cuando el host solicita leer, se genera el evento \textbf{EV\_TMC\_TX\_REQ} y la FSM envia los datos al host. Cuando el host termina de leer, se genera el evento \textbf{EV\_TMC\_TX\_DONE} y la FSM vuelve al estado \textbf{STATE\_TMC\_IDLE}.
 
-\subsubsection{Eventos controlados no permitidos}
-Aqui nuevamente se puede generar un evento no permitido si el host envia una nueva consulta generardo un evento de tipo \textbf{EV\_TMC\_RX\_START} antes de que el host termine de leer la respuesta. Esto genera un evento \textbf{Error -410: Query Interrupted} que debemos informar a libscpi para que lo registre. Tambien se debe reconfigurar la FSM volviendo al estado \textbf{STATE\_TMC\_RECEIVING} para recibir el nuevo mensaje. tambien es importante abortar la transmision de datos al host. Este evento no deberia ser posible si el host esta bien implementado, ya que no deberia enviar una nueva consulta mientras esta leyendo la respuesta a la consulta anterior.
+\subsubsection{Eventos controlados no esperados}
+Aqui nuevamente se puede generar un evento inesperado si el host envia una nueva consulta generardo un evento de tipo \textbf{EV\_TMC\_RX\_START} antes de que el host termine de leer la respuesta. Esto genera un evento \textbf{Error -410: Query Interrupted} que debemos informar a libscpi para que lo registre e impida el envio de nuevos datos hasta que comience el proceso del nuevo mensaje. Tambien se debe reconfigurar la FSM volviendo al estado \textbf{STATE\_TMC\_RECEIVING} para recibir el nuevo mensaje. Finalmente es importante abortar la transmision de datos al host y limpiar el buffer de salida.
 
+\section{Control de exepciones}
+\subsection{Error -350: Overflow}
+Este evento se produce cuando la cola de mensajes o la memoria del stream buffer se llena, en ese caso para reportar el error el driver enviará un mensaje vacio marcado con el error -350.
+
+\subsection{Error -410: Query Interrupted}
+Como vimos en la seccion anterior este evento puede ocurrir en 2 momentos y la respuesta es exactamente la misma: abortar cualquier transmision/generacion de datos de consultas y comenzar a leer el proximo mensaje.
+
+Evidentemente el driver no tiene prioridad ni control del motor scpi para interrumpirlo ya que funcionan en contextos diferentes por lo tanto el el driver solo puede:
+En el contexto de recepcion USBTMC: 
+\begin{itemize}
+    \item Bórrar cualquier mensaje listo para ser enviado vaciando el buffer de salida.
+    \item Marca el ultimo mensaje enviado con el error -410.
+    \item Iniciar un nuevo mensaje. 
+    \item Pasar la maquina de estados a \textbf{STATE\_TMC\_RECEIVING}.
+\end{itemize}
+
+\subsection{Error -420: Query Unterminated}
+Este evento se produce cuando el host pide datos y no hay nada para enviar, en ese caso para reportar el error el driver enviará un mensaje vacio marcado con el error -420.

@@ -1,7 +1,7 @@
 #ifndef USB_TMC_PROCESS_H_
 #define USB_TMC_PROCESS_H_
 
-#include "freertos/stream_buffer.h"
+#include "scpi_iface_drv.h"
 #include <stdint.h>
 #include <stddef.h>
 
@@ -39,10 +39,9 @@ extern "C"
         EV_TMC_SCPI_DONE // libscpi no encontró query
     } usb_tmc_event_t;
 
-    void driver_register(StreamBufferHandle_t stream);
     void usb_tmc_fsm_process(usb_tmc_event_t event, void *data, size_t len);
     usb_tmc_status_t usb_tmc_get_stb(void);
-    iface_struct_t *usb_tmc_get_iface(void);
+    iface_handler_t usb_tmc_get_iface(void);
 
 #ifdef __cplusplus
 }

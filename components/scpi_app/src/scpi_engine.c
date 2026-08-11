@@ -2,6 +2,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/stream_buffer.h"
+#include "freertos/queue.h"
 #include "esp_log.h"
 
 #include <stdlib.h>
@@ -11,190 +12,94 @@
 #include "scpi_engine.h"
 // #include "usb_tmc_process.h"
 #include "scpi_iface_drv.h"
+#include "iface_msg.h"
 
 static scpi_t scpi_context;
 
-/*******************************************************************************
- * Buffers de comunicación
- *
- ******************************************************************************/
-#define RX_STREAM_BUFFER_SIZE 1024
-#define TX_STREAM_BUFFER_SIZE 512
+static iface_handler_t active_iface;
+static QueueHandle_t message_q;
 
-static StaticStreamBuffer_t rxStreamBufferStruct;
-static StaticStreamBuffer_t txStreamBufferStruct;
-static uint8_t rx_stream_memory[RX_STREAM_BUFFER_SIZE + 1];
-static uint8_t tx_stream_memory[TX_STREAM_BUFFER_SIZE + 1];
+static StreamBufferHandle_t tx_stream;
 
-/* steam buffers */
-static StreamBufferHandle_t rx_stream_handle;
-static StreamBufferHandle_t tx_stream_handle;
-
-static const size_t xTrigger = 1;
-
-/*******************************************************************************
- * Queues de errores de driver
- *
- ******************************************************************************/
-#define ITEM_SIZE sizeof(iface_event_t)
-#define ERROR_QUEUE_SIZE 10
-
-static QueueHandle_t error_events_queue_handle;
-
-/* Memoria estática para las colas */
-static StaticQueue_t error_events_QueueStruct;
-static uint8_t error_events_queue_memory[ERROR_QUEUE_SIZE * ITEM_SIZE];
-
-void scpi_stream_register(StreamBufferHandle_t stream)
-{
-    rx_stream_handle = xStreamBufferCreateStatic(RX_STREAM_BUFFER_SIZE,
-                                                 xTrigger,
-                                                 rx_stream_memory,
-                                                 &rxStreamBufferStruct);
-    tx_stream_handle = xStreamBufferCreateStatic(TX_STREAM_BUFFER_SIZE,
-                                                 xTrigger,
-                                                 tx_stream_memory,
-                                                 &txStreamBufferStruct);
-}
-
-bool driver_event_queues_register(void)
-{
-    error_events_queue_handle = xQueueCreateStatic(ERROR_QUEUE_SIZE,
-                                                   ITEM_SIZE,
-                                                   error_events_queue_memory,
-                                                   &error_events_QueueStruct);
-
-    return (error_events_queue_handle != NULL);
-}
-
-bool driver_iface_init(iface_handle_t iface)
-{
-    if (!iface)
-        return false;
-
-    // 1. Configurar RX si no está listo
-    if (!(iface->status & SCPI_IFACE_RX_READY))
-    {
-        if (iface->set_rx_stream && iface->set_rx_stream(rx_stream_handle))
-        {
-            iface->status |= SCPI_IFACE_RX_READY;
-        }
-        else
-        {
-            iface->status |= SCPI_IFACE_ERROR;
-            return false;
-        }
-    }
-
-    // 2. Configurar TX si no está listo
-    if (!(iface->status & SCPI_IFACE_TX_READY))
-    {
-        if (iface->set_tx_stream && iface->set_tx_stream(tx_stream_handle))
-        {
-            iface->status |= SCPI_IFACE_TX_READY;
-        }
-        else
-        {
-            iface->status |= SCPI_IFACE_ERROR;
-            return false;
-        }
-    }
-
-    // 3. Inicializar Hardware si no está listo
-    if (!(iface->status & SCPI_IFACE_HW_READY))
-    {
-        if (iface->peripheric_init && iface->peripheric_init(rx_stream_handle, tx_stream_handle, error_events_queue_handle))
-        {
-            iface->status |= SCPI_IFACE_HW_READY;
-        }
-        else
-        {
-            // No marcamos ERROR inmediatamente si el HW puede aparecer luego (hot-plug)
-            // O marcamos ERROR si es crítico.
-            return false;
-        }
-    }
-
-    return (iface->status == (SCPI_IFACE_RX_READY | SCPI_IFACE_TX_READY | SCPI_IFACE_HW_READY));
-}
-
-StreamBufferHandle_t get_rx_stream(void)
-{
-    return rx_stream_handle;
-}
-
-StreamBufferHandle_t get_tx_stream(void)
-{
-    return tx_stream_handle;
-}
-
-iface_handle_t *scpi_comm_iface[3] = {NULL, NULL, NULL};
+static iface_msg_handle_t actual_msg = NULL;
 
 void iface_init(void)
 {
-    scpi_iface[0] = usb_tmc_get_iface();
+    iface_handler_t iface_tmc = usb_tmc_get_iface();
+    active_iface = &iface_tmc;
+
+    tx_stream = iface_tx_stream_init();
+    message_q = iface_msg_queue_init();
+    scpi_drv_register_iface(iface_tmc);
 }
 
-// Callback que llama libscpi cuando genera un string de respuesta
-size_t SCPI_Write(void *context, const char *data, size_t len)
+int msg_count;
+#define RX_LOCAL_SIZE 1024
+static char local_buf[RX_LOCAL_SIZE];
+
+static inline void iface_msg_mark_processing(iface_msg_handle_t msg)
 {
-    if (len < TX_STREAM_BUFFER_SIZE)
-    {
-        memcpy(tx_buffer, data, len);
-        // Inyectamos el evento a la máquina de estados
-        // avisar que ya hay datos
-        xStreamBufferSend(tx_stream_handle, data, len, 0);
-    }
-    return len;
+    iface_msg_set_state(msg, IFACE_MSG_PROCESSING);
 }
 
-void set_event(scpi_status_t status)
-{
-}
-
-static char local_buf[256];
 void scpi_engine_task(void *pvParameters)
 {
-
-    if (rx_stream_handle == NULL)
-    {
-        ESP_LOGI("SCPI", "Buffer no iniciado");
-    }
-    else
-    {
-        ESP_LOGI("SCPI", "Buffer iniciado correctamente");
-    }
+    iface_init();
 
     while (1)
     {
         // Dormimos hasta recibir el EV_RX_END
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
-        // Sacamos todo del StreamBuffer a medida
+        // Esperamos que llegue un mensaje
+        if (actual_msg == NULL || iface_msg_get_state(actual_msg) != IFACE_MSG_READY)
+        {
+            // Preguntar si hay mensages en el pool
+            msg_count = active_iface->get_msg_available();
+
+            if (msg_count > 0)
+            {
+                actual_msg = active_iface->get_next_slot();
+            }
+        }
+
+        if (iface_msg_get_state(actual_msg) == IFACE_MSG_READY)
+        {
+            iface_msg_set_state(actual_msg, IFACE_MSG_PROCESSING);
+            active_iface->inform_parser_events(EV_SCPI_MSG_DONE);
+        }
         size_t bytes_read;
         do
         {
-            bytes_read = xStreamBufferReceive(rx_stream_handle, local_buf, sizeof(local_buf), 0);
+            bytes_read = xStreamBufferReceive(actual_msg->stream, local_buf, RX_LOCAL_SIZE, 0);
             if (bytes_read > 0)
             {
-                /* la revision del último byte no es parter del la interfaz y esta tarea no tiene por que preocuparse por eso. La interfaz debe garantizar que todo lo que el usiario envia llegue al parser tal cual lo envió. La interfaz solo puede garantizar que el último byte que llega al parser es el último byte que envió el usuario. Si el usuario no envía '\n', el parser no lo recibirá y no podrá procesar la cadena y en todo caso, si el parser nunca informa de un mensaje/comando, puede avisar de un timeout y publicando el error correspondiente si el estandar SCPI 1999 lo especifica y si no seguirá esperando.
-                                // Aquí podrías revisar si el último byte es '\n', si no lo es, agregarlo.
-                                if (local_buf[bytes_read - 1] != '\n' && bytes_read < sizeof(local_buf))
-                                {
-                                    local_buf[bytes_read] = '\n';
-                                    bytes_read++;
-                                }
-                */
-                // Inyectamos a libscpi (esta función demora lo que tenga que demorar)
                 SCPI_Input(&scpi_context, local_buf, bytes_read);
             }
         } while (bytes_read > 0);
+        // Revisar y publicar errores del slot antes de limpiar los errores marcarlo como libre
+        if (iface_msg_is_error(actual_msg, MSG_ERR_OVERFLOW))
+        {
+            scpi_error_cb(&scpi_context, 350);
+            iface_msg_clear_error_flag(actual_msg, MSG_ERR_OVERFLOW);
+        }
+        if (iface_msg_is_error(actual_msg, MSG_ERR_INTERRUPT))
+        {
+            scpi_error_cb(&scpi_context, 410);
+            iface_msg_clear_error_flag(actual_msg, MSG_ERR_INTERRUPT);
+        }
+        if (iface_msg_is_error(actual_msg, MSG_ERR_UNTERMIN))
+        {
+            scpi_error_cb(&scpi_context, 420);
 
-        // // Si la respuesta NO fue un Query, la FSM quedó en IDLE. Le decimos al bus que lea.
-        // if (current_state == STATE_IDLE)
-        // {
-        //     //            tud_usbtmc_start_bus_read();
-        // }
+            iface_msg_clear_error_flag(actual_msg, MSG_ERR_UNTERMIN);
+        }
+
+        active_iface->inform_parser_events(EV_SCPI_PROCESS_DONE);
+
+        // --- AGREGAR ESTO ---
+        iface_msg_reset(actual_msg); // Pone el estado en FREE y limpia banderas
+        actual_msg = NULL;
     }
 }
 
@@ -216,10 +121,10 @@ bool output_status[2] = {0, 0};
  * Contexto global de libscpi y buffers asociados
  * ========================================================================== */
 
-#define SCPI_INPUT_BUFFER_LENGTH 256
+#define SCPI_INPUT_BUFFER_LENGTH 1024
 static char scpi_input_buffer[SCPI_INPUT_BUFFER_LENGTH];
 
-#define SCPI_ERROR_QUEUE_SIZE 10
+#define SCPI_ERROR_QUEUE_SIZE 32
 static scpi_error_t scpi_error_queue[SCPI_ERROR_QUEUE_SIZE];
 
 static scpi_result_t my_CoreRst(scpi_t *context);
@@ -598,7 +503,18 @@ static scpi_result_t my_CoreRst(scpi_t *context)
 static size_t scpi_write_cb(scpi_t *ctx, const char *data, size_t len)
 {
     (void)ctx;
-    xStreamBufferSend(tx_stream_handle, data, len, 0);
+    if (len < TX_STREAM_SIZE)
+    {
+        // Si llego un query interrupted, los comandos del mensaje se siguen procesanbdo pero no se generan salida hasta el siguiente mensaje.
+        if (!iface_msg_is_error(actual_msg, MSG_ERR_INTERRUPT))
+        {
+            xStreamBufferSend(tx_stream, data, len, 0);
+        }
+    }
+    else
+    {
+        // TODO:SET OUTPUT OVERFLOW ERROR;
+    }
     return len;
 }
 

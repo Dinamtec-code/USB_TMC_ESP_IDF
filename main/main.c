@@ -19,7 +19,7 @@ static const char *TAG = "APP_MAIN";
 #define LEDC_MODE LEDC_LOW_SPEED_MODE // OBLIGATORIO en ESP32-S3
 #define LEDC_OUTPUT_IO (48)
 #define LEDC_CHANNEL LEDC_CHANNEL_0
-#define LEDC_DUTY_RES LEDC_TIMER_10_BIT 
+#define LEDC_DUTY_RES LEDC_TIMER_10_BIT
 #define LEDC_FREQUENCY (25000)
 
 static void example_ledc_init(void)
@@ -72,15 +72,7 @@ void app_main(void)
     ESP_ERROR_CHECK(ledc_set_duty(LEDC_MODE, LEDC_CHANNEL, duty));
     ESP_ERROR_CHECK(ledc_update_duty(LEDC_MODE, LEDC_CHANNEL));
 
-    /*    BaseType_t ret2 = xTaskCreatePinnedToCore(usbtmc_app_task, "Task_COMM", 1024 * 8, NULL, 6, NULL, 1);
-       if (ret2 != pdPASS)
-       {
-           ESP_LOGI(TAG, "Error creando Task_COMM: %d", ret2);
-       }
-       else
-       {
-           ESP_LOGI(TAG, "Task_COMM creada exitosamente");
-       } */
+    // ret2 = xTaskCreatePinnedToCore(usbtmc_app_task, "Task_COMM", 1024 * 8, NULL, 6, NULL, 1);
 
     vTaskDelete(NULL);
 }
