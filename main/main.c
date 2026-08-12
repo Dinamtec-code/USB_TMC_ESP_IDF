@@ -8,12 +8,11 @@
 
 #include "usb_tmc_init.h"
 #include "usb_tmc_cb.h"
+#include "usb_tmc_process.h"
 
 #include "driver/ledc.h"
 #include "driver/gpio.h" // Necesario en v6.0 para gpio_num_t
 #include "esp_err.h"
-
-#include "scpi_engine.h"
 
 static const char *TAG = "APP_MAIN";
 
@@ -65,9 +64,6 @@ void app_main(void)
     }
     ESP_ERROR_CHECK(ret1);
 
-    // tmc_hal_init();
-    // iface_init();
-
     example_ledc_init();
 
     // Ejemplo: 50% Duty Cycle (512 de 1023)
@@ -75,7 +71,8 @@ void app_main(void)
     ESP_ERROR_CHECK(ledc_set_duty(LEDC_MODE, LEDC_CHANNEL, duty));
     ESP_ERROR_CHECK(ledc_update_duty(LEDC_MODE, LEDC_CHANNEL));
 
-    xTaskCreatePinnedToCore(scpi_engine_task, "Task_COMM", 8024, NULL, 4, NULL, 1);
+    scpi_engine_init();
+    tmc_hal_init();
 
     vTaskDelete(NULL);
 }

@@ -5,20 +5,23 @@
 #include <stddef.h>
 #include <stdbool.h>
 
-#include "scpi_iface_drv.h"
-
 #ifdef __cplusplus
 extern "C"
 {
 #endif
 
+#define IEEE4882_STB_QUESTIONABLE (0x08u)
+#define IEEE4882_STB_MAV (0x10u)
+#define IEEE4882_STB_SER (0x20u)
+#define IEEE4882_STB_SRQ (0x40u)
     /* Status Byte Masks (IEEE 488.2) */
     typedef enum
     {
         STB_NONE = 0x00,
-        STB_MAV_BIT = 0x10, // Message Available
-        STB_ESB_BIT = 0x20, // Event Status Bit
-        STB_RQS_BIT = 0x40  // Request Service
+        STB_MAV_BIT = IEEE4882_STB_MAV, // Message Available
+        STB_ESB_BIT = IEEE4882_STB_SER, // Event Status Bit
+        STB_RQS_BIT = IEEE4882_STB_SRQ, // Request Service
+        STB_QST_BIT = IEEE4882_STB_QUESTIONABLE
     } usb_tmc_status_t;
 
     /* ESTADOS DE LA FSM */
@@ -41,9 +44,9 @@ extern "C"
         EV_TMC_SCPI_DONE // libscpi no encontró query
     } usb_tmc_event_t;
 
+    void scpi_engine_init(void);
     void usb_tmc_fsm_process(usb_tmc_event_t event, void *data, size_t len);
     usb_tmc_status_t usb_tmc_get_stb(void);
-    iface_handler_t usb_tmc_get_iface(void);
 
 #ifdef __cplusplus
 }
